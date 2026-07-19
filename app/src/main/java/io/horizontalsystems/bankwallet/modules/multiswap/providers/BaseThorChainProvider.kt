@@ -29,8 +29,8 @@ import java.util.Date
 
 abstract class BaseThorChainProvider(
     baseUrl: String,
-    private val affiliate: String?,
-    private val affiliateBps: Int?,
+    internal val affiliate: String?,
+    internal val affiliateBps: Int?,
 ) : IMultiSwapProvider {
     open val streamingInterval: Long = 1
     override val type = SwapProviderType.DEX

@@ -1,10 +1,11 @@
 package io.horizontalsystems.bankwallet.modules.multiswap.providers
 
-
 object ThorChainProvider : BaseThorChainProvider(
     baseUrl = "https://gateway.liquify.com/chain/thorchain_api/thorchain/",
-    affiliate = "hrz",
-    affiliateBps = 100,
+    // Retrofit omits both nullable query parameters, so THORChain builds the
+    // returned transaction memo without a wallet affiliate fee.
+    affiliate = null,
+    affiliateBps = null,
 ) {
     override val streamingInterval: Long = 0
     override val id = "thorchain"

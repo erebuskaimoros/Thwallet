@@ -1,35 +1,50 @@
-# Unstoppable Wallet
+# Thwallet
 
-We dream of a world… A world where private property is untouchable and market access is unconditional.
+Thwallet is an experimental, community-maintained Android wallet focused on
+THORChain-native self-custody and swaps.
 
-That obsession led us to engineer a crypto wallet that is equally open to all, lives online forever and unconditionally protects your assets. Only the user is in control of the money.
+The project is derived from the MIT-licensed
+[Unstoppable Wallet Android](https://github.com/horizontalsystems/unstoppable-wallet-android)
+codebase. Its GitHub fork relationship and `upstream` Git remote preserve that
+provenance and provide a path for security updates.
 
-Unstoppable is a powerful non-custodial multi-wallet for Bitcoin, Ethereum, Binance Smart Chain, Avalanche, Solana, Zcash, The Open Network several and other blockchains. It provides non-custodial crypto storage, on-chain decentralized swaps, institutional grade analytics for cryptocurrency markets, extensive privacy controls and human oriented design. 
+## Current status
 
-It is built with care and adheres to best programming practices and implementation standards in cryptocurrency world. Fully implemented on Kotlin.
+Thwallet is in its initial bootstrap phase. It has not yet completed its
+independent package-ID, branding, signing, reproducible-build, or security-review
+work and should not be treated as a production release.
 
-More at [https://unstoppable.money](https://unstoppable.money)
+The first product policy is implemented in source:
 
-## Supported Android Versions
+- direct THORChain quote requests omit `affiliate` and `affiliate_bps`
+- therefore THORChain-generated transaction memos contain no wallet affiliate fee
+- users still pay unavoidable network, outbound, liquidity, slip, and gas costs
 
-Devices with Android versions 8.1 and above
+This policy currently applies to the native THORChain provider. Other swap
+providers have their own fee models and must be evaluated separately.
 
-## Download
+## Development
 
-[<img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png"
-     alt="Get it on F-Droid"
-     height="80">](https://f-droid.org/packages/io.horizontalsystems.bankwallet/)
-[<img src="https://play.google.com/intl/en_us/badges/images/generic/en-play-badge.png"
-     alt="Get it on Google Play"
-     height="80">](https://play.google.com/store/apps/details?id=io.horizontalsystems.bankwallet)
-[<img src="docs/images/badge_obtainium.png"
-     alt="Get it on Obtainium"
-     height="80">](https://apps.obtainium.imranr.dev/redirect.html?r=obtainium://add/https://github.com/horizontalsystems/unstoppable-wallet-android)
+The app is implemented in Kotlin with Jetpack Compose and supports Android 8.1
+and later.
 
-## Source Code
+```bash
+./gradlew assembleDebug
+./gradlew test
+./gradlew lint
+```
 
-[https://github.com/horizontalsystems/unstoppable-wallet-android](https://github.com/horizontalsystems/unstoppable-wallet-android)
+Project-specific contribution and security rules are in [AGENTS.md](./AGENTS.md).
+
+## Independence and attribution
+
+Thwallet is not an official THORChain, Nine Realms, or Horizontal Systems
+product. The current user interface still contains upstream Unstoppable Wallet
+branding while the independent identity is designed. Do not distribute builds
+under either project's name or signing identity.
 
 ## License
 
-This wallet is open source and available under the terms of the MIT License.
+The inherited source is available under the [MIT License](./LICENSE). Preserve
+the license and upstream attribution when redistributing substantial portions of
+the software.

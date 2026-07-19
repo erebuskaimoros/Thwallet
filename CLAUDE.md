@@ -1,5 +1,9 @@
 # CLAUDE.md
 
+> This checkout is the Thwallet derivative. Read and follow `AGENTS.md` first;
+> the guidance below describes the inherited Android architecture and coding
+> conventions.
+
 ## Project Overview
 
 Unstoppable Wallet - A multi-currency crypto wallet Android app supporting Bitcoin, Ethereum, and many other blockchains.
