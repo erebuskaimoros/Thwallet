@@ -14,9 +14,9 @@
 ## Product policy
 
 - Direct THORChain swaps must not charge a wallet affiliate fee.
-- `ThorChainProvider` must supply null values for both `affiliate` and
-  `affiliateBps`; Retrofit then omits both quote parameters and THORChain builds
-  a fee-free memo.
+- `walletkit-chain-thorchain`'s `ThorChainProvider` must supply null values for
+  both `affiliate` and `affiliateBps`; Retrofit then omits both quote parameters
+  and THORChain builds a fee-free memo.
 - Keep `ThorChainAffiliatePolicyTest` green. Treat any upstream change that
   reintroduces either parameter as a release blocker.
 - Do not describe swaps as entirely fee-free: network, liquidity, outbound,
@@ -48,8 +48,8 @@ Use JDK 17 and the checked-in Gradle wrapper.
 ./gradlew lint
 ```
 
-- Unit tests live under `app/src/test/`.
-- Instrumentation tests live under `app/src/androidTest/`.
+- Unit tests live under each module's `src/test/` tree.
+- Instrumentation tests live under each Android module's `src/androidTest/` tree.
 - Prefer Kotlin coroutines and Flow for new reactive code.
 - Prefer `uiv3/` for new Compose components.
 - Use imperative commit messages without type prefixes; keep the summary at or

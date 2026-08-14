@@ -20,6 +20,10 @@ The first product policy is implemented in source:
 - therefore THORChain-generated transaction memos contain no wallet affiliate fee
 - users still pay unavoidable network, outbound, liquidity, slip, and gas costs
 
+The current source also includes native THORChain and Maya wallet support for
+RUNE and CACAO, including address derivation, balance synchronization,
+send/receive, native swaps, transaction history, and THORChain secured assets.
+
 This policy currently applies to the native THORChain provider. Other swap
 providers have their own fee models and must be evaluated separately.
 
