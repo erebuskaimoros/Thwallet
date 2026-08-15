@@ -34,5 +34,5 @@ dependencies {
     api(libs.kit.ethereum)
 
     testImplementation(libs.junit)
+    testImplementation(libs.mockito)
 }
-

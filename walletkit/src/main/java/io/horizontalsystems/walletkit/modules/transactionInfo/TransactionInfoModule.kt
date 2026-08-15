@@ -13,6 +13,7 @@ import io.horizontalsystems.walletkit.entities.nft.NftUid
 import io.horizontalsystems.walletkit.entities.transactionrecords.TransactionRecord
 import io.horizontalsystems.walletkit.modules.transactions.NftMetadataService
 import io.horizontalsystems.marketkit.models.BlockchainType
+import io.horizontalsystems.walletkit.core.ethereum.EvmNetworkCatalog
 
 object TransactionInfoModule {
 
@@ -66,6 +67,15 @@ data class TransactionInfoItem(
 val BlockchainType.resendable: Boolean
     get() =
         when (this) {
-            BlockchainType.Optimism, BlockchainType.Base, BlockchainType.ZkSync, BlockchainType.ArbitrumOne -> false
+            BlockchainType.Optimism,
+            BlockchainType.Base,
+            BlockchainType.ZkSync,
+            BlockchainType.ArbitrumOne,
+            EvmNetworkCatalog.cronos,
+            EvmNetworkCatalog.blast,
+            EvmNetworkCatalog.mantle,
+            EvmNetworkCatalog.sei,
+            EvmNetworkCatalog.hyperEvm,
+            EvmNetworkCatalog.robinhood -> false
             else -> true
         }

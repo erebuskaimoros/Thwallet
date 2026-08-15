@@ -6,6 +6,7 @@ import io.horizontalsystems.walletkit.core.AdapterState
 import io.horizontalsystems.walletkit.core.App
 import io.horizontalsystems.walletkit.core.Caution
 import io.horizontalsystems.walletkit.core.diff
+import io.horizontalsystems.walletkit.core.ethereum.EvmNetworkCatalog
 import io.horizontalsystems.walletkit.core.providers.Translator
 import io.horizontalsystems.walletkit.entities.Currency
 import io.horizontalsystems.walletkit.entities.Wallet
@@ -137,35 +138,40 @@ class BalanceViewItemFactory {
         else -> false
     }
 
-    private fun getDefaultSyncingProgress(blockchainType: BlockchainType) = when (blockchainType) {
-        BlockchainType.Bitcoin,
-        BlockchainType.BitcoinCash,
-        BlockchainType.ECash,
-        BlockchainType.Litecoin,
-        BlockchainType.Dash,
-        BlockchainType.Zcash,
-        BlockchainType.Monero,
-        BlockchainType.Zano -> 10
+    private fun getDefaultSyncingProgress(blockchainType: BlockchainType): Int {
+        if (blockchainType in EvmNetworkCatalog.blockchainTypes) {
+            return 50
+        }
 
-        BlockchainType.Ethereum,
-        BlockchainType.BinanceSmartChain,
-        BlockchainType.Polygon,
-        BlockchainType.Avalanche,
-        BlockchainType.Optimism,
-        BlockchainType.Base,
-        BlockchainType.ZkSync,
-        BlockchainType.Solana,
-        BlockchainType.Gnosis,
-        BlockchainType.Fantom,
-        BlockchainType.ArbitrumOne,
-        BlockchainType.Solana,
-        BlockchainType.Tron,
-        BlockchainType.Stellar,
-        BlockchainType.Thorchain,
-        BlockchainType.Mayachain,
-        BlockchainType.Ton -> 50
+        return when (blockchainType) {
+            BlockchainType.Bitcoin,
+            BlockchainType.BitcoinCash,
+            BlockchainType.ECash,
+            BlockchainType.Litecoin,
+            BlockchainType.Dash,
+            BlockchainType.Zcash,
+            BlockchainType.Monero,
+            BlockchainType.Zano -> 10
 
-        is BlockchainType.Unsupported -> 0
+            BlockchainType.Ethereum,
+            BlockchainType.BinanceSmartChain,
+            BlockchainType.Polygon,
+            BlockchainType.Avalanche,
+            BlockchainType.Optimism,
+            BlockchainType.Base,
+            BlockchainType.ZkSync,
+            BlockchainType.Solana,
+            BlockchainType.Gnosis,
+            BlockchainType.Fantom,
+            BlockchainType.ArbitrumOne,
+            BlockchainType.Tron,
+            BlockchainType.Stellar,
+            BlockchainType.Thorchain,
+            BlockchainType.Mayachain,
+            BlockchainType.Ton -> 50
+
+            is BlockchainType.Unsupported -> 0
+        }
     }
 
     private fun getSyncingText(state: AdapterState?, syncedUntil: String?, withDetails: Boolean = false): String? {

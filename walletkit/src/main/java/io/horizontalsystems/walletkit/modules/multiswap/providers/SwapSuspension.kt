@@ -4,6 +4,7 @@ import com.google.gson.annotations.SerializedName
 import io.horizontalsystems.marketkit.models.BlockchainType
 import io.horizontalsystems.marketkit.models.Token
 import io.horizontalsystems.marketkit.models.TokenType
+import io.horizontalsystems.walletkit.core.ethereum.EvmNetworkCatalog
 import java.time.Instant
 
 /**
@@ -129,6 +130,12 @@ object CanonicalAssetId {
         BlockchainType.ArbitrumOne to "ARB",
         BlockchainType.Gnosis to "GNO",
         BlockchainType.Base to "BASE",
+        EvmNetworkCatalog.cronos to "CRO",
+        EvmNetworkCatalog.blast to "BLAST",
+        EvmNetworkCatalog.mantle to "MANTLE",
+        EvmNetworkCatalog.sei to "SEI",
+        EvmNetworkCatalog.hyperEvm to "HYPEREVM",
+        EvmNetworkCatalog.robinhood to "ROBINHOOD",
         BlockchainType.Tron to "TRON",
         BlockchainType.Solana to "SOL",
         BlockchainType.Ton to "TON",
@@ -157,6 +164,12 @@ object CanonicalAssetId {
         BlockchainType.ArbitrumOne to "ETH",
         BlockchainType.Gnosis to "XDAI",
         BlockchainType.Base to "ETH",
+        EvmNetworkCatalog.cronos to "CRO",
+        EvmNetworkCatalog.blast to "ETH",
+        EvmNetworkCatalog.mantle to "MNT",
+        EvmNetworkCatalog.sei to "SEI",
+        EvmNetworkCatalog.hyperEvm to "HYPE",
+        EvmNetworkCatalog.robinhood to "ETH",
         BlockchainType.Tron to "TRX",
         BlockchainType.Solana to "SOL",
         BlockchainType.Ton to "TON",

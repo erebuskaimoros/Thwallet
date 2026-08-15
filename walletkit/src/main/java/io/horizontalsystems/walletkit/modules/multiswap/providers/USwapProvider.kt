@@ -5,6 +5,7 @@ import com.google.gson.JsonElement
 import io.horizontalsystems.bitcoincore.storage.UtxoFilters
 import io.horizontalsystems.walletkit.core.App
 import io.horizontalsystems.walletkit.core.derivation
+import io.horizontalsystems.walletkit.core.ethereum.EvmNetworkCatalog
 import io.horizontalsystems.walletkit.core.isEvm
 import io.horizontalsystems.walletkit.core.managers.APIClient
 import io.horizontalsystems.walletkit.core.nativeTokenQueries
@@ -89,6 +90,12 @@ class USwapProvider(
         "monero" to BlockchainType.Monero,
         "zano" to BlockchainType.Zano,
         "100" to BlockchainType.Gnosis,
+        "25" to EvmNetworkCatalog.cronos,
+        "81457" to EvmNetworkCatalog.blast,
+        "5000" to EvmNetworkCatalog.mantle,
+        "1329" to EvmNetworkCatalog.sei,
+        "999" to EvmNetworkCatalog.hyperEvm,
+        "4663" to EvmNetworkCatalog.robinhood,
 //        "" to BlockchainType.Fantom,
 //        "" to BlockchainType.ZkSync,
     )
@@ -143,6 +150,22 @@ class USwapProvider(
 
             val blockchainType = blockchainTypes[token.chainId] ?: continue
 
+            // Catalog EVM chains are BlockchainType.Unsupported values, so handle the whole
+            // EVM family before the exhaustive when instead of silently discarding them in its
+            // Unsupported branch.
+            if (blockchainType.isEvm) {
+                val tokenType = if (!token.address.isNullOrBlank()) {
+                    TokenType.Eip20(token.address)
+                } else {
+                    TokenType.Native
+                }
+
+                App.marketKit.token(TokenQuery(blockchainType, tokenType))?.let {
+                    assetsMap[it] = token.identifier
+                }
+                continue
+            }
+
             when (blockchainType) {
                 BlockchainType.ArbitrumOne,
                 BlockchainType.Avalanche,
@@ -155,17 +178,7 @@ class USwapProvider(
                 BlockchainType.Fantom,
                 BlockchainType.Gnosis,
                 BlockchainType.ZkSync,
-                    -> {
-                    val tokenType = if (!token.address.isNullOrBlank()) {
-                        TokenType.Eip20(token.address)
-                    } else {
-                        TokenType.Native
-                    }
-
-                    App.marketKit.token(TokenQuery(blockchainType, tokenType))?.let {
-                        assetsMap[it] = token.identifier
-                    }
-                }
+                    -> Unit // handled by the EVM-family branch above
 
                 BlockchainType.Bitcoin,
                 BlockchainType.BitcoinCash,

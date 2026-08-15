@@ -2,6 +2,7 @@ package io.horizontalsystems.walletkit.core.managers
 
 import android.util.Log
 import io.horizontalsystems.walletkit.core.App
+import io.horizontalsystems.walletkit.core.ethereum.EvmNetworkCatalog
 import io.horizontalsystems.walletkit.core.BackgroundManager
 import io.horizontalsystems.walletkit.core.BackgroundManagerState
 import io.horizontalsystems.walletkit.core.UnsupportedAccountException
@@ -321,6 +322,12 @@ object EvmKitManagerRegistry {
         BlockchainType.ArbitrumOne -> Chain.ArbitrumOne
         BlockchainType.Gnosis -> Chain.Gnosis
         BlockchainType.Fantom -> Chain.Fantom
+        EvmNetworkCatalog.cronos -> Chain.Cronos
+        EvmNetworkCatalog.blast -> Chain.Blast
+        EvmNetworkCatalog.mantle -> Chain.Mantle
+        EvmNetworkCatalog.sei -> Chain.Sei
+        EvmNetworkCatalog.hyperEvm -> Chain.HyperEvm
+        EvmNetworkCatalog.robinhood -> Chain.Robinhood
         else -> throw IllegalArgumentException("Unsupported blockchain type ${'$'}blockchainType")
     }
 

@@ -6,6 +6,7 @@ import io.horizontalsystems.walletkit.entities.BitcoinAddress
 import io.horizontalsystems.walletkit.entities.MoneroWatchAddress
 import io.horizontalsystems.walletkit.modules.watchaddress.MoneroUriParser
 import io.horizontalsystems.walletkit.core.address.EvmAddressValidator
+import io.horizontalsystems.walletkit.core.ethereum.EvmNetworkCatalog
 import io.horizontalsystems.marketkit.models.BlockchainType
 import io.horizontalsystems.marketkit.models.TokenQuery
 import io.horizontalsystems.marketkit.models.TokenType
@@ -121,6 +122,13 @@ class AddressHandlerUdn(
             BlockchainType.Fantom,
             BlockchainType.ArbitrumOne -> "ETH"
 
+            EvmNetworkCatalog.cronos -> "CRO"
+            EvmNetworkCatalog.blast -> "ETH"
+            EvmNetworkCatalog.mantle -> "MNT"
+            EvmNetworkCatalog.sei -> "SEI"
+            EvmNetworkCatalog.hyperEvm -> "HYPE"
+            EvmNetworkCatalog.robinhood -> "ETH"
+
             BlockchainType.Bitcoin -> "BTC"
             BlockchainType.BitcoinCash -> "BCH"
             BlockchainType.ECash -> "XEC"
@@ -144,7 +152,9 @@ class AddressHandlerUdn(
                 else -> null
             }
 
-            is TokenType.Eip20 -> when (tokenQuery.blockchainType) {
+            is TokenType.Eip20 -> if (tokenQuery.blockchainType in EvmNetworkCatalog.blockchainTypes) {
+                "ERC20"
+            } else when (tokenQuery.blockchainType) {
                 BlockchainType.BinanceSmartChain -> "BEP20"
                 BlockchainType.Polygon -> "MATIC"
                 BlockchainType.Avalanche -> "AVAX"

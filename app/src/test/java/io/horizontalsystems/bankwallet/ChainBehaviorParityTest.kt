@@ -10,6 +10,7 @@ import io.horizontalsystems.walletkit.chain.bitcoin.BitcoinChainPlugin
 import io.horizontalsystems.walletkit.chain.bitcoin.DashChainPlugin
 import io.horizontalsystems.walletkit.chain.bitcoin.ECashChainPlugin
 import io.horizontalsystems.walletkit.chain.bitcoin.LitecoinChainPlugin
+import io.horizontalsystems.walletkit.chain.evm.EvmChainPlugin
 import io.horizontalsystems.walletkit.chain.monero.MoneroChainPlugin
 import io.horizontalsystems.walletkit.chain.solana.SolanaChainPlugin
 import io.horizontalsystems.walletkit.chain.stellar.StellarChainPlugin
@@ -29,6 +30,7 @@ import io.horizontalsystems.walletkit.core.factories.uriScheme
 import io.horizontalsystems.walletkit.core.feePriceScale
 import io.horizontalsystems.walletkit.core.isEvm
 import io.horizontalsystems.walletkit.core.isSupported
+import io.horizontalsystems.walletkit.core.managers.EvmBlockchainManager
 import io.horizontalsystems.walletkit.core.nativeTokenQueries
 import io.horizontalsystems.walletkit.core.order
 import io.horizontalsystems.walletkit.core.protocolType
@@ -62,6 +64,9 @@ class ChainBehaviorParityTest {
     fun registerChainPlugins() {
         // Mirrors the registration in App.onCreate. Runtime managers are never touched by
         // the pure hooks this test exercises.
+        EvmBlockchainManager.blockchainTypes.forEach { blockchainType ->
+            ChainRegistry.register(EvmChainPlugin(blockchainType))
+        }
         ChainRegistry.register(BitcoinChainPlugin())
         ChainRegistry.register(BitcoinCashChainPlugin())
         ChainRegistry.register(ECashChainPlugin())
@@ -141,6 +146,13 @@ class ChainBehaviorParityTest {
             "Fixture missing. Generate it with -DupdateParityFixture=true"
         }
         assertEquals(fixtureFile.readText(), actual)
+    }
+
+    @Test
+    fun `supported blockchain uids are unique`() {
+        val supportedUids = BlockchainType.supported.map { it.uid }
+
+        assertEquals(supportedUids.distinct(), supportedUids)
     }
 
     private fun dump(): String = buildString {

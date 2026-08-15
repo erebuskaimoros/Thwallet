@@ -7,6 +7,7 @@ import io.horizontalsystems.walletkit.core.storage.EvmSyncSourceStorage
 import io.horizontalsystems.walletkit.entities.EvmSyncSource
 import io.horizontalsystems.walletkit.entities.EvmSyncSourceRecord
 import io.horizontalsystems.marketkit.models.BlockchainType
+import io.horizontalsystems.walletkit.core.ethereum.EvmNetworkCatalog
 import io.reactivex.Observable
 import io.reactivex.subjects.PublishSubject
 import kotlinx.coroutines.channels.BufferOverflow
@@ -178,6 +179,54 @@ class EvmSyncSourceManager(
                     blockchainType,
                     "Ankr",
                     listOf(URI("https://rpc.ankr.com/fantom"))
+                )
+            )
+
+            EvmNetworkCatalog.cronos -> listOf(
+                evmSyncSource(
+                    blockchainType,
+                    "Cronos",
+                    listOf(URI("https://evm.cronos.com"))
+                )
+            )
+
+            EvmNetworkCatalog.blast -> listOf(
+                evmSyncSource(
+                    blockchainType,
+                    "Blast",
+                    listOf(URI("https://rpc.blast.io"))
+                )
+            )
+
+            EvmNetworkCatalog.mantle -> listOf(
+                evmSyncSource(
+                    blockchainType,
+                    "Mantle",
+                    listOf(URI("https://rpc.mantle.xyz"))
+                )
+            )
+
+            EvmNetworkCatalog.sei -> listOf(
+                evmSyncSource(
+                    blockchainType,
+                    "Sei",
+                    listOf(URI("https://evm-rpc.sei-apis.com"))
+                )
+            )
+
+            EvmNetworkCatalog.hyperEvm -> listOf(
+                evmSyncSource(
+                    blockchainType,
+                    "HyperEVM",
+                    listOf(URI("https://rpc.hyperliquid.xyz/evm"))
+                )
+            )
+
+            EvmNetworkCatalog.robinhood -> listOf(
+                evmSyncSource(
+                    blockchainType,
+                    "Robinhood Chain",
+                    listOf(URI("https://rpc.mainnet.chain.robinhood.com"))
                 )
             )
 

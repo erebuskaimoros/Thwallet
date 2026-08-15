@@ -17,6 +17,7 @@ import io.horizontalsystems.ethereumkit.models.Address
 import io.horizontalsystems.ethereumkit.models.GasPrice
 import io.horizontalsystems.ethereumkit.models.TransactionData
 import io.horizontalsystems.marketkit.models.BlockchainType
+import io.horizontalsystems.walletkit.core.ethereum.EvmNetworkCatalog
 import kotlinx.coroutines.flow.Flow
 import java.math.BigDecimal
 import java.math.BigInteger
@@ -169,6 +170,8 @@ data class FeeViewItem(
 internal val BlockchainType.l1GasFeeContractAddress: Address?
     get() =
         when (this) {
-            BlockchainType.Optimism -> Address("0x420000000000000000000000000000000000000F")
+            BlockchainType.Optimism,
+            BlockchainType.Base,
+            EvmNetworkCatalog.blast -> Address("0x420000000000000000000000000000000000000F")
             else -> null
         }

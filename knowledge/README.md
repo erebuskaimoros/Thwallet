@@ -27,6 +27,34 @@ and Maya behavior now lives in `walletkit-chain-thorchain`, backed by
 `horizontalsystems/thorchain-kit-android`. The Android `app` module is primarily
 the product composition root.
 
+## Six-chain EVM expansion
+
+Thwallet's local EVM catalog adds Cronos (25), Blast (81457), Mantle (5000),
+Sei EVM (1329), HyperEVM (999), and Robinhood Chain (4663). The catalog owns
+the chain metadata and native-token fallbacks, while `MarketKitWrapper`
+normalizes compatible remote token rows and rejects legacy contract rows whose
+decimals are unknown. This avoids maintaining a MarketKit data fork.
+
+The persisted platform identifiers are deliberate: HyperEVM uses `hyperevm`
+while its HYPE coin uses `hyperliquid`; Sei EVM retains MarketKit's current
+`sei-network` identifier even though newer CoinGecko data calls the platform
+`sei-v2`. Do not rename either stored chain UID without an alias/migration layer,
+because enabled-wallet and backup records embed it in `TokenQuery.id`.
+
+EthereumKit's chain model is a closed enum used by signing and transaction
+assembly, so the build pins the Thwallet-owned `ethereum-kit-android` fork at
+`56bd013fcdbd93762f73edc152c347da5d12ff7e`. The fork adds the six chain IDs,
+RPC-only history support, and Mantle's additional L1-data/operator fee model.
+The app supplies its own RPC and history-provider configuration.
+
+All six networks support EVM derivation, balances, native and EIP-20 wallets,
+send/receive, WalletConnect chain recognition, and explorer links. Cronos is
+currently RPC-only because its current explorer API requires credentials, so
+incoming indexed history is unavailable there. Indexed history and swap routes
+on every new network still depend on the configured third-party provider or
+swap backend advertising that chain. This expansion is not by itself a release
+security review.
+
 ## August 2026 synchronization baseline
 
 Thwallet merged upstream `master` through `1f50b1fb8`. Debug assembly and the

@@ -11,6 +11,7 @@ import io.horizontalsystems.walletkit.core.IAppNumberFormatter
 import io.horizontalsystems.walletkit.core.ViewModelUiState
 import io.horizontalsystems.walletkit.core.alternativeImageUrl
 import io.horizontalsystems.walletkit.core.coinIconUrl
+import io.horizontalsystems.walletkit.core.ethereum.EvmNetworkCatalog
 import io.horizontalsystems.walletkit.core.managers.CurrencyManager
 import io.horizontalsystems.walletkit.core.managers.MarketKitWrapper
 import io.horizontalsystems.walletkit.entities.SimulateFailSwapMode
@@ -209,6 +210,12 @@ class SwapInfoViewModel(
             BlockchainType.Thorchain -> "https://runescan.io/tx/$txHash"
             BlockchainType.Mayachain -> "https://www.mayascan.org/tx/$txHash"
             BlockchainType.Zano -> "https://explorer.zano.org/transaction/$txHash"
+            EvmNetworkCatalog.cronos -> "https://explorer.cronos.com/tx/$txHash"
+            EvmNetworkCatalog.blast -> "https://blastscan.io/tx/$txHash"
+            EvmNetworkCatalog.mantle -> "https://mantlescan.xyz/tx/$txHash"
+            EvmNetworkCatalog.sei -> "https://seiscan.io/tx/$txHash"
+            EvmNetworkCatalog.hyperEvm -> "https://hyperevmscan.io/tx/$txHash"
+            EvmNetworkCatalog.robinhood -> "https://robinhoodchain.blockscout.com/tx/$txHash"
             is BlockchainType.Unsupported -> null
         }
 

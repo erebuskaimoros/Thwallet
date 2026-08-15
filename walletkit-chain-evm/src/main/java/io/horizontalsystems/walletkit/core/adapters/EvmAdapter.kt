@@ -5,9 +5,10 @@ import io.horizontalsystems.walletkit.core.App
 import io.horizontalsystems.walletkit.core.BalanceData
 import io.horizontalsystems.walletkit.core.ICoinManager
 import io.horizontalsystems.walletkit.core.managers.EvmKitWrapper
+import io.horizontalsystems.walletkit.core.managers.EvmBlockchainManager
+import io.horizontalsystems.walletkit.core.managers.EvmKitManagerRegistry
 import io.horizontalsystems.ethereumkit.core.EthereumKit
 import io.horizontalsystems.ethereumkit.models.Address
-import io.horizontalsystems.ethereumkit.models.Chain
 import io.horizontalsystems.ethereumkit.models.TransactionData
 import io.reactivex.Flowable
 import java.math.BigDecimal
@@ -61,16 +62,7 @@ class EvmAdapter(evmKitWrapper: EvmKitWrapper, coinManager: ICoinManager) :
         const val decimal = 18
 
         fun clear(walletId: String) {
-            val networkTypes = listOf(
-                Chain.Ethereum,
-                Chain.BinanceSmartChain,
-                Chain.Polygon,
-                Chain.Avalanche,
-                Chain.Optimism,
-                Chain.ArbitrumOne,
-                Chain.Gnosis,
-            )
-            networkTypes.forEach {
+            EvmBlockchainManager.blockchainTypes.map(EvmKitManagerRegistry::getChain).forEach {
                 EthereumKit.clear(App.instance, it, walletId)
             }
         }

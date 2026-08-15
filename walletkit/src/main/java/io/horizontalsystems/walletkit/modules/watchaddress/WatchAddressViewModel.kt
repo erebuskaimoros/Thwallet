@@ -18,6 +18,7 @@ import io.horizontalsystems.walletkit.modules.address.AddressParserChain
 import io.horizontalsystems.hdwalletkit.HDExtendedKey
 import io.horizontalsystems.marketkit.models.BlockchainType
 import io.horizontalsystems.walletkit.core.chain.ChainRegistry
+import io.horizontalsystems.walletkit.core.ethereum.EvmNetworkCatalog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
@@ -213,35 +214,41 @@ class WatchAddressViewModel(
         emitState()
     }
 
-    private fun addressType(address: Address) = when (address.blockchainType) {
-        BlockchainType.Bitcoin,
-        BlockchainType.BitcoinCash,
-        BlockchainType.ECash,
-        BlockchainType.Litecoin,
-        BlockchainType.Dash -> Type.BitcoinAddress
+    private fun addressType(address: Address): Type {
+        if (address.blockchainType in EvmNetworkCatalog.blockchainTypes) {
+            return Type.EvmAddress
+        }
 
-        BlockchainType.Ethereum,
-        BlockchainType.BinanceSmartChain,
-        BlockchainType.Polygon,
-        BlockchainType.Avalanche,
-        BlockchainType.Optimism,
-        BlockchainType.Base,
-        BlockchainType.ZkSync,
-        BlockchainType.ArbitrumOne,
-        BlockchainType.Gnosis,
-        BlockchainType.Fantom -> Type.EvmAddress
+        return when (address.blockchainType) {
+            BlockchainType.Bitcoin,
+            BlockchainType.BitcoinCash,
+            BlockchainType.ECash,
+            BlockchainType.Litecoin,
+            BlockchainType.Dash -> Type.BitcoinAddress
 
-        BlockchainType.Solana -> Type.SolanaAddress
-        BlockchainType.Tron -> Type.TronAddress
-        BlockchainType.Ton -> Type.TonAddress
-        BlockchainType.Stellar -> Type.StellarAddress
-        BlockchainType.Monero -> Type.MoneroAddress
-        BlockchainType.Zcash,
-        BlockchainType.Zano,
-        BlockchainType.Thorchain,
-        BlockchainType.Mayachain,
-        is BlockchainType.Unsupported,
-        null -> Type.Unsupported
+            BlockchainType.Ethereum,
+            BlockchainType.BinanceSmartChain,
+            BlockchainType.Polygon,
+            BlockchainType.Avalanche,
+            BlockchainType.Optimism,
+            BlockchainType.Base,
+            BlockchainType.ZkSync,
+            BlockchainType.ArbitrumOne,
+            BlockchainType.Gnosis,
+            BlockchainType.Fantom -> Type.EvmAddress
+
+            BlockchainType.Solana -> Type.SolanaAddress
+            BlockchainType.Tron -> Type.TronAddress
+            BlockchainType.Ton -> Type.TonAddress
+            BlockchainType.Stellar -> Type.StellarAddress
+            BlockchainType.Monero -> Type.MoneroAddress
+            BlockchainType.Zcash,
+            BlockchainType.Zano,
+            BlockchainType.Thorchain,
+            BlockchainType.Mayachain,
+            is BlockchainType.Unsupported,
+            null -> Type.Unsupported
+        }
     }
 
     fun blockchainSelectionOpened() {

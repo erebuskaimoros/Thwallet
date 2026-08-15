@@ -1,6 +1,7 @@
 package io.horizontalsystems.walletkit.modules.transactions
 
 import io.horizontalsystems.walletkit.core.managers.TransactionAdapterManager
+import io.horizontalsystems.walletkit.core.ethereum.EvmNetworkCatalog
 import io.horizontalsystems.walletkit.entities.transactionrecords.TransactionRecord
 import io.horizontalsystems.walletkit.modules.contacts.model.Contact
 import io.horizontalsystems.marketkit.models.Blockchain
@@ -70,6 +71,16 @@ class TransactionRecordRepository(
             // merged token-less pool would degrade its rows to the unknown fallback
             if (wallet.source.account.type is AccountType.Passkey) {
                 mergedWallets.add(wallet)
+                return@forEach
+            }
+
+            // Catalog EVM chains currently use BlockchainType.Unsupported values. Pool their
+            // native and EIP-20 wallets by source just like first-class EVM chains instead of
+            // dropping their history in the Unsupported branch below.
+            if (wallet.source.blockchain.type in EvmNetworkCatalog.blockchainTypes) {
+                if (mergedWallets.none { it.source == wallet.source }) {
+                    mergedWallets.add(TransactionWallet(null, wallet.source, null))
+                }
                 return@forEach
             }
 

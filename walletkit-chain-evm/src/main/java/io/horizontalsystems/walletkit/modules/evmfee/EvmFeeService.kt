@@ -26,7 +26,6 @@ class EvmFeeService(
     private var transactionData: TransactionData? = null,
 ) : IEvmFeeService {
 
-    private var gasLimit: Long? = null
     private var gasPriceInfoState: DataState<GasPriceInfo> = DataState.Loading
     private val coroutineScope = CoroutineScope(Dispatchers.Default)
     private var gasPriceInfoJob: Job? = null
@@ -123,12 +122,6 @@ class EvmFeeService(
         stubAmount: BigInteger? = null,
         transactionData: TransactionData
     ): Single<GasData> {
-        val gasLimit = gasLimit
-
-        if (gasLimit != null) {
-            return Single.just(GasData(gasLimit = gasLimit, gasPrice = gasPrice))
-        }
-
         return gasDataService.estimatedGasDataAsync(gasPrice, transactionData, stubAmount)
             .onErrorResumeNext { error ->
                 if (error.convertedError == EvmError.LowerThanBaseGasLimit) {
@@ -154,7 +147,7 @@ class EvmFeeService(
     }
 
     fun setGasLimit(gasLimit: Long?) {
-        this.gasLimit = gasLimit
+        gasDataService.setPredefinedGasLimit(gasLimit)
         sync()
     }
 

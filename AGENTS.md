@@ -55,6 +55,12 @@ Use JDK 17 and the checked-in Gradle wrapper.
 - Use imperative commit messages without type prefixes; keep the summary at or
   below 60 characters.
 
+## Shell safety
+
+- In zsh snippets, do not use `path` or `status` as local variable names. They
+  are special shell parameters; use task-specific names such as `target_path`
+  or `http_code` instead.
+
 ## Upstream synchronization
 
 1. Fetch `upstream` and inspect its changes before merging or rebasing.

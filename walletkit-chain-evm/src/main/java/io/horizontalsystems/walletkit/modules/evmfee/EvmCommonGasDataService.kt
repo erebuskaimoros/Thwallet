@@ -2,20 +2,27 @@ package io.horizontalsystems.walletkit.modules.evmfee
 
 import io.horizontalsystems.ethereumkit.core.EthereumKit
 import io.horizontalsystems.ethereumkit.core.rollup.L1FeeProvider
+import io.horizontalsystems.ethereumkit.core.rollup.MantleFeeProvider
 import io.horizontalsystems.ethereumkit.models.GasPrice
 import io.horizontalsystems.ethereumkit.models.TransactionData
 import io.horizontalsystems.marketkit.models.BlockchainType
+import io.horizontalsystems.walletkit.core.ethereum.EvmNetworkCatalog
 import io.reactivex.Single
 import java.math.BigInteger
 
 open class EvmCommonGasDataService(
-    private val evmKit: EthereumKit,
-    protected val predefinedGasLimit: Long? = null
+    protected val evmKit: EthereumKit,
+    protected var predefinedGasLimit: Long? = null
 ) {
 
+    internal fun setPredefinedGasLimit(gasLimit: Long?) {
+        predefinedGasLimit = gasLimit
+    }
+
     open fun estimatedGasDataAsync(gasPrice: GasPrice, transactionData: TransactionData, stubAmount: BigInteger? = null): Single<GasData> {
-        if (predefinedGasLimit != null) {
-            return Single.just(GasData(gasLimit = predefinedGasLimit, gasPrice = gasPrice))
+        val explicitGasLimit = predefinedGasLimit
+        if (explicitGasLimit != null) {
+            return Single.just(GasData(gasLimit = explicitGasLimit, gasPrice = gasPrice))
         }
 
         val surchargeRequired = transactionData.input.isNotEmpty()
@@ -43,6 +50,10 @@ open class EvmCommonGasDataService(
 
     companion object {
         fun instance(evmKit: EthereumKit, blockchainType: BlockchainType, gasLimit: Long? = null): EvmCommonGasDataService {
+            if (blockchainType == EvmNetworkCatalog.mantle) {
+                return EvmMantleGasDataService(evmKit, MantleFeeProvider(evmKit), gasLimit)
+            }
+
             val l1FeeContractAddress = blockchainType.l1GasFeeContractAddress
 
             return if (l1FeeContractAddress == null) {

@@ -5,6 +5,7 @@ import io.horizontalsystems.marketkit.models.BlockchainType
 import io.horizontalsystems.marketkit.models.Token
 import io.horizontalsystems.marketkit.models.TokenQuery
 import io.horizontalsystems.marketkit.models.TokenType
+import io.horizontalsystems.walletkit.core.ethereum.EvmNetworkCatalog
 
 class EvmBlockchainManager(
     private val marketKit: MarketKitWrapper,
@@ -17,7 +18,7 @@ class EvmBlockchainManager(
         get() = marketKit.blockchains(blockchainTypes.map { it.uid })
 
     /** EVM chain ids without depending on the kit's Chain enum. */
-    fun getChainId(blockchainType: BlockchainType): Int? = when (blockchainType) {
+    fun getChainId(blockchainType: BlockchainType): Int? = EvmNetworkCatalog.chainId(blockchainType) ?: when (blockchainType) {
         BlockchainType.Ethereum -> 1
         BlockchainType.BinanceSmartChain -> 56
         BlockchainType.Polygon -> 137
@@ -55,6 +56,6 @@ class EvmBlockchainManager(
             BlockchainType.Fantom,
             BlockchainType.Base,
             BlockchainType.ZkSync,
-        )
+        ) + EvmNetworkCatalog.blockchainTypes
     }
 }

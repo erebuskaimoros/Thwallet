@@ -21,6 +21,7 @@ import io.horizontalsystems.marketkit.models.TokenQuery
 import io.horizontalsystems.marketkit.models.TokenType
 import io.horizontalsystems.marketkit.models.TopPlatform
 import io.horizontalsystems.walletkit.core.chain.ChainRegistry
+import io.horizontalsystems.walletkit.core.ethereum.EvmNetworkCatalog
 import java.math.BigDecimal
 
 val Token.protocolType: String?
@@ -59,6 +60,12 @@ val TokenQuery.protocolType: String?
                 BlockchainType.Ethereum -> "ERC20"
                 BlockchainType.BinanceSmartChain -> "BEP20"
                 BlockchainType.Tron -> "TRC20"
+                EvmNetworkCatalog.cronos -> "CRC20"
+                EvmNetworkCatalog.blast,
+                EvmNetworkCatalog.mantle,
+                EvmNetworkCatalog.sei,
+                EvmNetworkCatalog.hyperEvm,
+                EvmNetworkCatalog.robinhood -> "ERC20"
                 else -> blockchainType.title
             }
         }
@@ -74,7 +81,9 @@ val TokenQuery.customCoinUid: String
     get() = "${TokenQuery.customCoinPrefix}${id}"
 
 val TokenQuery.isSupported: Boolean
-    get() = when (blockchainType) {
+    get() = if (blockchainType in EvmNetworkCatalog.blockchainTypes) {
+        tokenType is TokenType.Native || tokenType is TokenType.Eip20
+    } else when (blockchainType) {
         BlockchainType.Bitcoin,
         BlockchainType.Litecoin -> {
             tokenType is TokenType.Derived
@@ -145,6 +154,12 @@ val Blockchain.description: String
         BlockchainType.Solana -> "SOL, SPL tokens"
         BlockchainType.Gnosis -> "xDAI, ERC20 tokens"
         BlockchainType.Fantom -> "FTM, ERC20 tokens"
+        EvmNetworkCatalog.cronos -> "CRO, CRC20 tokens"
+        EvmNetworkCatalog.blast -> "ETH, ERC20 tokens"
+        EvmNetworkCatalog.mantle -> "MNT, ERC20 tokens"
+        EvmNetworkCatalog.sei -> "SEI, ERC20 tokens"
+        EvmNetworkCatalog.hyperEvm -> "HYPE, ERC20 tokens"
+        EvmNetworkCatalog.robinhood -> "ETH, ERC20 tokens"
         BlockchainType.Tron -> "TRX, TRC20 tokens"
         BlockchainType.Ton -> "TON"
         BlockchainType.Stellar -> "XLM, Stellar assets"
@@ -198,6 +213,12 @@ private val blockchainOrderMap: Map<BlockchainType, Int> by lazy {
         BlockchainType.ZkSync,
         BlockchainType.Gnosis,
         BlockchainType.Fantom,
+        EvmNetworkCatalog.cronos,
+        EvmNetworkCatalog.blast,
+        EvmNetworkCatalog.mantle,
+        EvmNetworkCatalog.sei,
+        EvmNetworkCatalog.hyperEvm,
+        EvmNetworkCatalog.robinhood,
     ).forEachIndexed { index, blockchainType ->
         map[blockchainType] = index
     }
@@ -219,6 +240,12 @@ val BlockchainType.tokenIconPlaceholder: Int
         BlockchainType.ArbitrumOne -> R.drawable.arbitrum_erc20
         BlockchainType.Gnosis -> R.drawable.gnosis_erc20
         BlockchainType.Fantom -> R.drawable.fantom_erc20
+        EvmNetworkCatalog.cronos,
+        EvmNetworkCatalog.blast,
+        EvmNetworkCatalog.mantle,
+        EvmNetworkCatalog.sei,
+        EvmNetworkCatalog.hyperEvm,
+        EvmNetworkCatalog.robinhood -> R.drawable.erc20
         BlockchainType.Tron -> R.drawable.tron_trc20
         BlockchainType.Ton -> R.drawable.the_open_network_jetton
         BlockchainType.Stellar -> R.drawable.stellar_asset
@@ -244,6 +271,12 @@ val BlockchainType.title: String
     BlockchainType.Solana -> "Solana"
     BlockchainType.Gnosis -> "Gnosis"
     BlockchainType.Fantom -> "Fantom"
+    EvmNetworkCatalog.cronos -> "Cronos"
+    EvmNetworkCatalog.blast -> "Blast"
+    EvmNetworkCatalog.mantle -> "Mantle"
+    EvmNetworkCatalog.sei -> "Sei EVM"
+    EvmNetworkCatalog.hyperEvm -> "HyperEVM"
+    EvmNetworkCatalog.robinhood -> "Robinhood Chain"
     BlockchainType.Tron -> "Tron"
     BlockchainType.Ton -> "Ton"
     BlockchainType.Stellar -> "Stellar"
@@ -293,10 +326,18 @@ private val chainIdBlockchainTypeMap: Map<Long, BlockchainType> = mapOf(
     250L to BlockchainType.Fantom,
     8453L to BlockchainType.Base,
     324L to BlockchainType.ZkSync,
+    25L to EvmNetworkCatalog.cronos,
+    81457L to EvmNetworkCatalog.blast,
+    5000L to EvmNetworkCatalog.mantle,
+    1329L to EvmNetworkCatalog.sei,
+    999L to EvmNetworkCatalog.hyperEvm,
+    4663L to EvmNetworkCatalog.robinhood,
 )
 
 val BlockchainType.isEvm: Boolean
-    get() = when (this) {
+    get() = if (this in EvmNetworkCatalog.blockchainTypes) {
+        true
+    } else when (this) {
         BlockchainType.ArbitrumOne,
         BlockchainType.Avalanche,
         BlockchainType.Base,
@@ -328,6 +369,12 @@ val BlockchainType.isEvm: Boolean
     }
 
 fun BlockchainType.supports(accountType: AccountType): Boolean {
+    if (this in EvmNetworkCatalog.blockchainTypes) {
+        return accountType is AccountType.Mnemonic ||
+                accountType is AccountType.EvmAddress ||
+                accountType is AccountType.EvmPrivateKey
+    }
+
     return when (accountType) {
         is AccountType.Mnemonic -> {
             when (this) {
@@ -651,7 +698,10 @@ val BlockchainType.Companion.supported: List<BlockchainType>
         BlockchainType.Gnosis,
         BlockchainType.Fantom,
         BlockchainType.Tron,
-    ) + ChainRegistry.all.map { it.blockchainType }
+    )
+        .plus(EvmNetworkCatalog.blockchainTypes)
+        .plus(ChainRegistry.all.map { it.blockchainType })
+        .distinctBy { it.uid }
 
 val CoinPrice.diff: BigDecimal?
     get() = when (App.priceManager.priceChangeInterval) {

@@ -6,6 +6,7 @@ import io.horizontalsystems.marketkit.models.Coin
 import io.horizontalsystems.marketkit.models.BlockchainType
 import io.horizontalsystems.marketkit.models.Token
 import io.horizontalsystems.marketkit.models.TokenType
+import io.horizontalsystems.walletkit.core.ethereum.EvmNetworkCatalog
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -39,6 +40,26 @@ class SwapSuspensionTest {
         assertEquals("BASE.ETH", CanonicalAssetId.of(token(BlockchainType.Base, TokenType.Native)))
         assertEquals("BSC.BNB", CanonicalAssetId.of(token(BlockchainType.BinanceSmartChain, TokenType.Native)))
         assertEquals("GNO.XDAI", CanonicalAssetId.of(token(BlockchainType.Gnosis, TokenType.Native)))
+    }
+
+    @Test
+    fun `catalog EVM native tokens use canonical backend chain and gas tickers`() {
+        val expected = mapOf(
+            EvmNetworkCatalog.cronos to "CRO.CRO",
+            EvmNetworkCatalog.blast to "BLAST.ETH",
+            EvmNetworkCatalog.mantle to "MANTLE.MNT",
+            EvmNetworkCatalog.sei to "SEI.SEI",
+            EvmNetworkCatalog.hyperEvm to "HYPEREVM.HYPE",
+            EvmNetworkCatalog.robinhood to "ROBINHOOD.ETH",
+        )
+
+        expected.forEach { (blockchainType, canonicalAsset) ->
+            assertEquals(canonicalAsset, CanonicalAssetId.of(token(blockchainType, TokenType.Native)))
+            assertEquals(
+                canonicalAsset.substringBefore('.'),
+                CanonicalAssetId.chainOf(canonicalAsset),
+            )
+        }
     }
 
     @Test

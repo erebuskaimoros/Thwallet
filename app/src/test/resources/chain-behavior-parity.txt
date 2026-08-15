@@ -1,4 +1,4 @@
-supported=ethereum,binance-smart-chain,polygon-pos,avalanche,optimistic-ethereum,base,zksync,arbitrum-one,gnosis,fantom,tron,bitcoin,bitcoin-cash,ecash,litecoin,dash,monero,zano,zcash,solana,stellar,the-open-network,thorchain,mayachain
+supported=ethereum,binance-smart-chain,polygon-pos,avalanche,optimistic-ethereum,base,zksync,arbitrum-one,gnosis,fantom,tron,cronos,blast,mantle,sei-network,hyperevm,robinhood,bitcoin,bitcoin-cash,ecash,litecoin,dash,monero,zano,zcash,solana,stellar,the-open-network,thorchain,mayachain
 
 chain ethereum
   title=Ethereum
@@ -230,6 +230,132 @@ chain tron
   protocolType[Native]=null
   protocolType[Eip20]=TRC20
   supports=Mnemonic,TronAddress,TronPrivateKey,Passkey
+
+chain cronos
+  title=Cronos
+  description=CRO, CRC20 tokens
+  order=24
+  isEvm=true
+  blockTime=1
+  uriScheme=ethereum
+  removeScheme=true
+  chainId=25
+  brandColor=null
+  feePriceScale=Gwei
+  tokenIconPlaceholder=erc20
+  restoreSettingTypes=
+  nativeTokenQueries=cronos|native
+  defaultTokenQuery=cronos|native
+  supportedNftTypes=
+  supportedTokenTypes=Native,Eip20
+  protocolType[Native]=Cronos
+  protocolType[Eip20]=CRC20
+  supports=Mnemonic,EvmAddress,EvmPrivateKey
+
+chain blast
+  title=Blast
+  description=ETH, ERC20 tokens
+  order=25
+  isEvm=true
+  blockTime=2
+  uriScheme=ethereum
+  removeScheme=true
+  chainId=81457
+  brandColor=null
+  feePriceScale=Gwei
+  tokenIconPlaceholder=erc20
+  restoreSettingTypes=
+  nativeTokenQueries=blast|native
+  defaultTokenQuery=blast|native
+  supportedNftTypes=
+  supportedTokenTypes=Native,Eip20
+  protocolType[Native]=Blast
+  protocolType[Eip20]=ERC20
+  supports=Mnemonic,EvmAddress,EvmPrivateKey
+
+chain mantle
+  title=Mantle
+  description=MNT, ERC20 tokens
+  order=26
+  isEvm=true
+  blockTime=2
+  uriScheme=ethereum
+  removeScheme=true
+  chainId=5000
+  brandColor=null
+  feePriceScale=Gwei
+  tokenIconPlaceholder=erc20
+  restoreSettingTypes=
+  nativeTokenQueries=mantle|native
+  defaultTokenQuery=mantle|native
+  supportedNftTypes=
+  supportedTokenTypes=Native,Eip20
+  protocolType[Native]=Mantle
+  protocolType[Eip20]=ERC20
+  supports=Mnemonic,EvmAddress,EvmPrivateKey
+
+chain sei-network
+  title=Sei EVM
+  description=SEI, ERC20 tokens
+  order=27
+  isEvm=true
+  blockTime=1
+  uriScheme=ethereum
+  removeScheme=true
+  chainId=1329
+  brandColor=null
+  feePriceScale=Gwei
+  tokenIconPlaceholder=erc20
+  restoreSettingTypes=
+  nativeTokenQueries=sei-network|native
+  defaultTokenQuery=sei-network|native
+  supportedNftTypes=
+  supportedTokenTypes=Native,Eip20
+  protocolType[Native]=Sei EVM
+  protocolType[Eip20]=ERC20
+  supports=Mnemonic,EvmAddress,EvmPrivateKey
+
+chain hyperevm
+  title=HyperEVM
+  description=HYPE, ERC20 tokens
+  order=28
+  isEvm=true
+  blockTime=1
+  uriScheme=ethereum
+  removeScheme=true
+  chainId=999
+  brandColor=null
+  feePriceScale=Gwei
+  tokenIconPlaceholder=erc20
+  restoreSettingTypes=
+  nativeTokenQueries=hyperevm|native
+  defaultTokenQuery=hyperevm|native
+  supportedNftTypes=
+  supportedTokenTypes=Native,Eip20
+  protocolType[Native]=HyperEVM
+  protocolType[Eip20]=ERC20
+  supports=Mnemonic,EvmAddress,EvmPrivateKey
+
+chain robinhood
+  title=Robinhood Chain
+  description=ETH, ERC20 tokens
+  order=29
+  isEvm=true
+  blockTime=1
+  uriScheme=ethereum
+  removeScheme=true
+  chainId=4663
+  brandColor=null
+  feePriceScale=Gwei
+  tokenIconPlaceholder=erc20
+  restoreSettingTypes=
+  nativeTokenQueries=robinhood|native
+  defaultTokenQuery=robinhood|native
+  supportedNftTypes=
+  supportedTokenTypes=Native,Eip20
+  protocolType[Native]=Robinhood Chain
+  protocolType[Eip20]=ERC20
+  supports=Mnemonic,EvmAddress,EvmPrivateKey
 
 chain bitcoin
   title=Bitcoin

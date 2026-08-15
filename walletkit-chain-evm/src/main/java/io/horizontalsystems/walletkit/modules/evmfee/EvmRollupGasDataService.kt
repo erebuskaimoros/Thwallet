@@ -14,10 +14,11 @@ class EvmRollupGasDataService(
     predefinedGasLimit: Long? = null
 ) : EvmCommonGasDataService(evmKit, predefinedGasLimit) {
 
-    override fun estimatedGasDataAsync(gasPrice: GasPrice, transactionData: TransactionData, stubAmount: BigInteger?): Single<GasData> =
-        if (predefinedGasLimit != null) {
-            l1GasFee(transactionData, gasPrice, predefinedGasLimit).map { l1Fee ->
-                RollupGasData(gasLimit = predefinedGasLimit, gasPrice = gasPrice, l1Fee = l1Fee)
+    override fun estimatedGasDataAsync(gasPrice: GasPrice, transactionData: TransactionData, stubAmount: BigInteger?): Single<GasData> {
+        val explicitGasLimit = predefinedGasLimit
+        return if (explicitGasLimit != null) {
+            l1GasFee(transactionData, gasPrice, explicitGasLimit).map { l1Fee ->
+                RollupGasData(gasLimit = explicitGasLimit, gasPrice = gasPrice, l1Fee = l1Fee)
             }
         } else {
             super.estimatedGasDataAsync(gasPrice, transactionData, stubAmount).flatMap { gasData ->
@@ -33,6 +34,7 @@ class EvmRollupGasDataService(
                 }
             }
         }
+    }
 
     private fun maxBytes(value: BigInteger): BigInteger {
         val hexString = value.toString(16)

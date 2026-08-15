@@ -1,6 +1,7 @@
 package io.horizontalsystems.walletkit.modules.address
 
 import io.horizontalsystems.walletkit.core.chain.ChainRegistry
+import io.horizontalsystems.walletkit.core.isEvm
 import io.horizontalsystems.walletkit.core.supported
 import io.horizontalsystems.marketkit.models.BlockchainType
 import io.horizontalsystems.marketkit.models.TokenQuery
@@ -13,21 +14,8 @@ class AddressHandlerFactory(
     private fun domainHandlers(blockchainType: BlockchainType): List<IAddressHandler> {
         val udnHandler = AddressHandlerUdn(TokenQuery(blockchainType, TokenType.Native), null, udnApiKey)
         val domainAddressHandlers = mutableListOf<IAddressHandler>(udnHandler)
-        when (blockchainType) {
-            BlockchainType.Ethereum,
-            BlockchainType.BinanceSmartChain,
-            BlockchainType.Polygon,
-            BlockchainType.Avalanche,
-            BlockchainType.Optimism,
-            BlockchainType.Base,
-            BlockchainType.ZkSync,
-            BlockchainType.Gnosis,
-            BlockchainType.Fantom,
-            BlockchainType.ArbitrumOne -> {
-                domainAddressHandlers.add(AddressHandlerEns(blockchainType, EnsResolverHolder.resolver))
-            }
-
-            else -> {}
+        if (blockchainType.isEvm) {
+            domainAddressHandlers.add(AddressHandlerEns(blockchainType, EnsResolverHolder.resolver))
         }
         domainAddressHandlers.addAll(ChainRegistry[blockchainType]?.domainAddressHandlers().orEmpty())
         return domainAddressHandlers

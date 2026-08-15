@@ -2,6 +2,7 @@ package io.horizontalsystems.walletkit.entities
 
 import io.horizontalsystems.marketkit.models.BlockchainType
 import io.horizontalsystems.marketkit.models.TokenType
+import io.horizontalsystems.walletkit.core.ethereum.EvmNetworkCatalog
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -28,7 +29,9 @@ class BitcoinAddress(
 ) : Address(hex, domain, blockchainType)
 
 val BitcoinAddress.tokenType: TokenType
-    get() = when (this.blockchainType) {
+    get() = if (blockchainType in EvmNetworkCatalog.blockchainTypes) {
+        TokenType.Unsupported("", "")
+    } else when (this.blockchainType) {
         BlockchainType.Bitcoin -> TokenType.Derived(this.derivation ?: TokenType.Derivation.Bip84)
         BlockchainType.BitcoinCash -> TokenType.AddressTyped(TokenType.AddressType.Type145)
         BlockchainType.ECash -> TokenType.Native

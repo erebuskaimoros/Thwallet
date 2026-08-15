@@ -8,6 +8,7 @@ import io.horizontalsystems.walletkit.modules.market.topplatforms.Platform
 import io.horizontalsystems.hdwalletkit.Language
 import io.horizontalsystems.hodler.LockTimeInterval
 import io.horizontalsystems.marketkit.models.BlockchainType
+import io.horizontalsystems.walletkit.core.ethereum.EvmNetworkCatalog
 import io.horizontalsystems.marketkit.models.CoinCategory
 import io.horizontalsystems.marketkit.models.CoinInvestment
 import io.horizontalsystems.marketkit.models.CoinTreasury
@@ -158,7 +159,15 @@ val BlockchainType.blockTime : Long?
         BlockchainType.Fantom,
         BlockchainType.Base,
         BlockchainType.ZkSync,
+        EvmNetworkCatalog.blast,
+        EvmNetworkCatalog.mantle,
             -> 2
+
+        EvmNetworkCatalog.cronos,
+        EvmNetworkCatalog.sei,
+        EvmNetworkCatalog.hyperEvm,
+        EvmNetworkCatalog.robinhood,
+            -> 1
 
         BlockchainType.Gnosis,
         BlockchainType.Stellar,
@@ -179,8 +188,6 @@ val BlockchainType.blockTime : Long?
         BlockchainType.Monero -> 120
 
         BlockchainType.Zano -> 60
-
-        BlockchainType.ArbitrumOne -> 1
 
         else -> null
     }

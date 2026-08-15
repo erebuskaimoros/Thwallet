@@ -2,6 +2,7 @@ package io.horizontalsystems.walletkit.core.factories
 
 import io.horizontalsystems.walletkit.core.App
 import io.horizontalsystems.walletkit.core.chain.ChainRegistry
+import io.horizontalsystems.walletkit.core.isEvm
 import io.horizontalsystems.walletkit.modules.send.address.EnterAddressValidator
 import io.horizontalsystems.walletkit.modules.send.address.EvmAddressValidator
 import io.horizontalsystems.walletkit.modules.send.address.TronAddressValidator
@@ -23,21 +24,11 @@ object AddressValidatorFactory {
             return it
         }
 
+        if (token.blockchainType.isEvm) {
+            return EvmAddressValidator()
+        }
+
         return when (token.blockchainType) {
-            BlockchainType.Ethereum,
-            BlockchainType.BinanceSmartChain,
-            BlockchainType.Polygon,
-            BlockchainType.Avalanche,
-            BlockchainType.Optimism,
-            BlockchainType.Base,
-            BlockchainType.ZkSync,
-            BlockchainType.Gnosis,
-            BlockchainType.Fantom,
-            BlockchainType.ArbitrumOne -> {
-                EvmAddressValidator()
-            }
-
-
             BlockchainType.Tron -> {
                 TronAddressValidator(token, App.adapterManager, allowOwnAddress)
             }

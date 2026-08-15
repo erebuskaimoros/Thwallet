@@ -4,17 +4,23 @@ import android.content.Context
 import io.horizontalsystems.walletkit.core.InvalidAuthTokenException
 import io.horizontalsystems.walletkit.core.NoAuthTokenException
 import io.horizontalsystems.walletkit.core.customCoinPrefix
+import io.horizontalsystems.walletkit.core.ethereum.EvmNetworkCatalog
 import io.horizontalsystems.marketkit.MarketKit
 import io.horizontalsystems.marketkit.SyncInfo
+import io.horizontalsystems.marketkit.models.Blockchain
 import io.horizontalsystems.marketkit.models.BlockchainType
+import io.horizontalsystems.marketkit.models.Coin
 import io.horizontalsystems.marketkit.models.CoinPrice
+import io.horizontalsystems.marketkit.models.FullCoin
 import io.horizontalsystems.marketkit.models.HsPeriodType
 import io.horizontalsystems.marketkit.models.HsPointTimePeriod
 import io.horizontalsystems.marketkit.models.HsTimePeriod
 import io.horizontalsystems.marketkit.models.MarketInfo
 import io.horizontalsystems.marketkit.models.NftTopCollection
 import io.horizontalsystems.marketkit.models.Stock
+import io.horizontalsystems.marketkit.models.Token
 import io.horizontalsystems.marketkit.models.TokenQuery
+import io.horizontalsystems.marketkit.models.TokenType
 import io.horizontalsystems.marketkit.models.Vault
 import io.horizontalsystems.subscriptions.core.UserSubscriptionManager
 import io.reactivex.Observable
@@ -60,29 +66,114 @@ class MarketKitWrapper(
     val fullCoinsUpdatedObservable: Observable<Unit>
         get() = marketKit.fullCoinsUpdatedObservable
 
-    fun topFullCoins(limit: Int = 20) = marketKit.topFullCoins(limit)
+    fun topFullCoins(limit: Int = 20): List<FullCoin> =
+        EvmNetworkCatalog.overlayFullCoins(marketKit.topFullCoins(limit)).take(limit)
 
-    fun fullCoins(filter: String, limit: Int = 20) = marketKit.fullCoins(filter, limit)
+    fun fullCoins(filter: String, limit: Int = 20): List<FullCoin> {
+        val localCoinUids = EvmNetworkCatalog.localCoinUids(filter)
+        val overlaid = EvmNetworkCatalog.overlayFullCoins(
+            marketFullCoins = marketKit.fullCoins(filter, limit),
+            additionalCoinUids = localCoinUids,
+        )
+        if (filter.isBlank()) return overlaid.take(limit)
 
-    fun fullCoins(coinUids: List<String>) = marketKit.fullCoins(coinUids)
+        val fullCoinsByUid = overlaid.associateBy { it.coin.uid }
+        return (
+            localCoinUids.mapNotNull(fullCoinsByUid::get) +
+                overlaid.filterNot { it.coin.uid in localCoinUids }
+            ).take(limit)
+    }
 
-    fun fullCoinsByCoinCode(coinCodes: List<String>) = marketKit.fullCoinsByCoinCodes(coinCodes)
+    fun fullCoins(coinUids: List<String>): List<FullCoin> {
+        val fullCoinsByUid = EvmNetworkCatalog
+            .overlayFullCoins(marketKit.fullCoins(coinUids), coinUids)
+            .associateBy { it.coin.uid }
+        return coinUids.distinct().mapNotNull(fullCoinsByUid::get)
+    }
 
-    fun allCoins() = marketKit.allCoins()
+    fun fullCoinsByCoinCode(coinCodes: List<String>): List<FullCoin> {
+        val requestedCodes = coinCodes.mapTo(hashSetOf()) { it.lowercase() }
+        val localCoinUids = EvmNetworkCatalog.nativeTokens
+            .filter { it.coin.code.lowercase() in requestedCodes }
+            .map { it.coin.uid }
+        return EvmNetworkCatalog.overlayFullCoins(
+            marketKit.fullCoinsByCoinCodes(coinCodes),
+            localCoinUids,
+        )
+    }
 
-    fun token(query: TokenQuery) = marketKit.token(query)
+    fun allCoins(): List<Coin> = EvmNetworkCatalog.overlayCoins(marketKit.allCoins())
 
-    fun tokens(queries: List<TokenQuery>) = marketKit.tokens(queries)
+    fun token(query: TokenQuery): Token? {
+        return EvmNetworkCatalog.marketLookupQueries(query)
+            .asSequence()
+            .mapNotNull { marketKit.token(it)?.let(EvmNetworkCatalog::normalize) }
+            .firstOrNull()
+            ?: nativeToken(query)
+    }
 
-    fun tokens(reference: String) = marketKit.tokens(reference)
+    fun tokens(queries: List<TokenQuery>): List<Token> {
+        if (queries.isEmpty()) return emptyList()
 
-    fun tokens(blockchainType: BlockchainType, filter: String, limit: Int = 20) = marketKit.tokens(blockchainType, filter, limit)
+        val lookupQueries = queries
+            .flatMap(EvmNetworkCatalog::marketLookupQueries)
+            .distinct()
+        val marketTokensByQuery = marketKit.tokens(lookupQueries)
+            .mapNotNull(EvmNetworkCatalog::normalize)
+            .associateBy { EvmNetworkCatalog.canonicalQuery(it.tokenQuery) }
 
-    fun allBlockchains() = marketKit.allBlockchains()
+        return queries
+            .map(EvmNetworkCatalog::canonicalQuery)
+            .distinct()
+            .mapNotNull { query -> marketTokensByQuery[query] ?: nativeToken(query) }
+    }
 
-    fun blockchains(uids: List<String>) = marketKit.blockchains(uids)
+    fun tokens(reference: String): List<Token> = marketKit.tokens(reference)
+        .mapNotNull(EvmNetworkCatalog::normalize)
+        .distinctBy { EvmNetworkCatalog.canonicalQuery(it.tokenQuery) }
 
-    fun blockchain(uid: String) = marketKit.blockchain(uid)
+    fun tokens(blockchainType: BlockchainType, filter: String, limit: Int = 20): List<Token> {
+        val marketTokens = marketKit.tokens(blockchainType, filter, limit)
+            .mapNotNull(EvmNetworkCatalog::normalize)
+        val localNativeToken = EvmNetworkCatalog.nativeToken(blockchainType)
+            ?.takeIf { token ->
+                filter.isBlank() ||
+                    token.coin.name.contains(filter, ignoreCase = true) ||
+                    token.coin.code.contains(filter, ignoreCase = true)
+            }
+        val preferredNativeToken = localNativeToken?.let { localToken ->
+            marketTokens.firstOrNull {
+                EvmNetworkCatalog.canonicalQuery(it.tokenQuery) == localToken.tokenQuery
+            } ?: localToken
+        }
+
+        return (listOfNotNull(preferredNativeToken) + marketTokens)
+            .distinctBy { EvmNetworkCatalog.canonicalQuery(it.tokenQuery) }
+            .take(limit)
+    }
+
+    fun allBlockchains(): List<Blockchain> {
+        val blockchainsByUid = marketKit.allBlockchains().associateByTo(linkedMapOf()) { it.uid }
+        EvmNetworkCatalog.blockchains.forEach { blockchainsByUid[it.uid] = it }
+        return blockchainsByUid.values.toList()
+    }
+
+    fun blockchains(uids: List<String>): List<Blockchain> {
+        val marketBlockchains = marketKit.blockchains(uids).associateBy { it.uid }
+        return uids.distinct().mapNotNull { uid ->
+            EvmNetworkCatalog.blockchain(uid) ?: marketBlockchains[uid]
+        }
+    }
+
+    fun blockchain(uid: String): Blockchain? =
+        EvmNetworkCatalog.blockchain(uid) ?: marketKit.blockchain(uid)
+
+    private fun nativeToken(query: TokenQuery): Token? =
+        if (query.tokenType is TokenType.Native) {
+            EvmNetworkCatalog.nativeToken(query.blockchainType)
+        } else {
+            null
+        }
 
     fun marketInfosSingle(top: Int, currencyCode: String, defi: Boolean) = marketKit.marketInfosSingle(top, currencyCode, defi)
 
