@@ -4,6 +4,7 @@ import io.horizontalsystems.walletkit.modules.multiswap.sendtransaction.effectiv
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class DogecoinFeeRateProviderTest {
@@ -22,9 +23,20 @@ class DogecoinFeeRateProviderTest {
 
     @Test
     fun `external fee cannot undercut dogecoin relay floor`() {
-        assertEquals(100, effectiveExternalFeeRate(0, 100))
         assertEquals(100, effectiveExternalFeeRate(99, 100))
         assertEquals(100, effectiveExternalFeeRate(100, 100))
+    }
+
+    @Test
+    fun `external effective fee rejects nonpositive or excessive values`() {
+        listOf(0, -1, 1_000_001, Int.MAX_VALUE).forEach { recommended ->
+            assertThrows(IllegalArgumentException::class.java) {
+                effectiveExternalFeeRate(recommended, 100)
+            }
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            effectiveExternalFeeRate(750_000, 1_000_001)
+        }
     }
 
     @Test

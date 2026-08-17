@@ -61,6 +61,10 @@ abstract class BaseThorChainProvider(
     companion object {
         // bump to invalidate cached asset maps when the mapping logic changes
         private const val ASSETS_MAP_VERSION = 5
+        // Preserves THORChain's live DOGE rate (750k) while bounding downstream size × rate arithmetic.
+        private const val MAX_UTXO_GAS_RATE = 1_000_000
+        // Ten times the live DOGE threshold (1 DOGE), with ample room for other UTXO chains.
+        private const val MAX_UTXO_DUST_THRESHOLD = 1_000_000_000
     }
 
     protected val thornodeAPI =
@@ -263,6 +267,28 @@ abstract class BaseThorChainProvider(
     protected open fun getRefundAddress(tokenIn: Token): String? = null
     protected open fun getFromAddress(tokenIn: Token): String? = null
 
+    private fun validatedUtxoGasRate(quoteSwap: Response.QuoteSwap): Int {
+        require(quoteSwap.gas_rate_units?.equals("satsperbyte", ignoreCase = true) == true) {
+            "Invalid THORChain UTXO gas rate units"
+        }
+
+        val gasRate = quoteSwap.recommended_gas_rate?.toIntOrNull()
+        require(gasRate != null && gasRate in 1..MAX_UTXO_GAS_RATE) {
+            "Invalid THORChain UTXO gas rate"
+        }
+
+        return gasRate
+    }
+
+    private fun validatedUtxoMinimumSendAmount(quoteSwap: Response.QuoteSwap): Int {
+        val dustThreshold = quoteSwap.dust_threshold?.toIntOrNull()
+        require(dustThreshold != null && dustThreshold in 1..MAX_UTXO_DUST_THRESHOLD) {
+            "Invalid THORChain UTXO dust threshold"
+        }
+
+        return Math.addExact(dustThreshold, 1)
+    }
+
     protected open suspend fun resolveDestinationAddress(tokenOut: Token): String {
         return SwapHelper.getReceiveAddressForToken(tokenOut)
     }
@@ -330,7 +356,6 @@ abstract class BaseThorChainProvider(
         val memo = quoteSwap.memo
 
         val router = quoteSwap.router
-        val dustThreshold = quoteSwap.dust_threshold?.toInt()
 
         if (tokenIn.blockchainType == settlementBlockchainType) {
             // native input (RUNE/CACAO): MsgDeposit when the quote has no inbound vault (the
@@ -351,7 +376,6 @@ abstract class BaseThorChainProvider(
         }
 
         val inboundAddress = checkNotNull(quoteSwap.inbound_address)
-        val recommendedGasRate = checkNotNull(quoteSwap.recommended_gas_rate).toInt()
 
         return when (tokenIn.blockchainType) {
             BlockchainType.ArbitrumOne,
@@ -405,8 +429,8 @@ abstract class BaseThorChainProvider(
                     address = inboundAddress,
                     memo = memo,
                     amount = amountIn,
-                    recommendedGasRate = recommendedGasRate,
-                    minimumSendAmount = dustThreshold?.plus(1),
+                    recommendedGasRate = validatedUtxoGasRate(quoteSwap),
+                    minimumSendAmount = validatedUtxoMinimumSendAmount(quoteSwap),
                     changeToFirstInput = true,
                     utxoFilters = UtxoFilters(
                         scriptTypes = listOf(ScriptType.P2PKH, ScriptType.P2WPKHSH, ScriptType.P2WPKH),
@@ -420,8 +444,8 @@ abstract class BaseThorChainProvider(
                     address = inboundAddress,
                     memo = memo,
                     amount = amountIn,
-                    recommendedGasRate = recommendedGasRate,
-                    minimumSendAmount = dustThreshold?.plus(1),
+                    recommendedGasRate = validatedUtxoGasRate(quoteSwap),
+                    minimumSendAmount = validatedUtxoMinimumSendAmount(quoteSwap),
                     changeToFirstInput = true,
                     utxoFilters = UtxoFilters(
                         scriptTypes = listOf(ScriptType.P2PKH),
@@ -489,7 +513,7 @@ interface ThornodeAPI {
 //  "recommended_min_amount_in": "10760",
             // absent when the input asset is THORChain-native
             val recommended_gas_rate: String?,
-//  "gas_rate_units": "satsperbyte",
+            val gas_rate_units: String?,
             val memo: String,
             val expected_amount_out: BigDecimal,
 //  "expected_amount_out_streaming": "2035299208",

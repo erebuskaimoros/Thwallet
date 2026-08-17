@@ -120,7 +120,11 @@ transaction or release its inputs, and retry loops are bounded.
 
 Direct THORChain DOGE swaps preserve Thwallet's zero-wallet-affiliate policy:
 the quote request omits both affiliate fields. They are not cost-free; normal
-network, liquidity, outbound, slip, and gas costs remain. OpenCryptoPay DOGE is
+network, liquidity, outbound, slip, and gas costs remain. UTXO quotes fail
+closed unless `gas_rate_units` is exactly `satsperbyte` (case-insensitive) and
+the recommended rate is in the validated 1...1,000,000 range. The quote must
+also provide a positive `dust_threshold` no greater than 1,000,000,000 base
+units. OpenCryptoPay DOGE is
 intentionally disabled until that protocol documents Dogecoin transaction
 support. uSwap exposes the Dogecoin chain mapping, but an executable route still
 depends on the provider advertising availability.

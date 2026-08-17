@@ -10,6 +10,7 @@ import io.horizontalsystems.walletkit.modules.multiswap.providers.ThornodeAPI.Re
 import io.horizontalsystems.walletkit.modules.multiswap.sendtransaction.SendTransactionData
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.math.BigDecimal
@@ -34,31 +35,8 @@ class ThorChainDogecoinSwapTest {
 
     @Test
     fun `dogecoin quote builds legacy p2pkh inbound transaction`() = runBlocking {
-        val token = Token(
-            coin = Coin("dogecoin", "Dogecoin", "DOGE"),
-            blockchain = Blockchain(BlockchainType.Dogecoin, "Dogecoin", null),
-            type = TokenType.Native,
-            decimals = 8,
-        )
-        val quote = Response.QuoteSwap(
-            inbound_address = "D9EGy2TqzyLmL1PJ9K8LhoM9HuZaogDkJY",
-            inbound_confirmation_seconds = 60,
-            outbound_delay_seconds = 60,
-            fees = Response.QuoteSwap.Fees(
-                affiliate = BigDecimal.ZERO,
-                outbound = BigDecimal.ONE,
-                liquidity = BigDecimal.ONE,
-                total = BigDecimal("2"),
-            ),
-            router = null,
-            expiry = 1_800_000_000,
-            dust_threshold = "100000000",
-            recommended_gas_rate = "750000",
-            memo = "=:THOR.RUNE:thor1destination",
-            expected_amount_out = BigDecimal.ONE,
-            streaming_swap_seconds = 6,
-            total_swap_seconds = 126,
-        )
+        val token = dogecoinToken()
+        val quote = dogecoinQuote(gasRateUnits = "satsperbyte")
 
         val data = TestProvider().dogecoinSendData(token, BigDecimal("10"), quote)
 
@@ -73,4 +51,112 @@ class ThorChainDogecoinSwapTest {
         assertEquals(listOf(ScriptType.P2PKH), data.utxoFilters.scriptTypes)
         assertEquals(10, data.utxoFilters.maxOutputsCountForInputs)
     }
+
+    @Test
+    fun `dogecoin quote accepts case insensitive sats per byte units`() = runBlocking {
+        val data = TestProvider().dogecoinSendData(
+            dogecoinToken(),
+            BigDecimal("10"),
+            dogecoinQuote(gasRateUnits = "SatsPerByte"),
+        )
+
+        assertTrue(data is SendTransactionData.Btc)
+        assertEquals(750_000, (data as SendTransactionData.Btc).recommendedGasRate)
+    }
+
+    @Test
+    fun `dogecoin quote rejects missing gas rate units`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking {
+                TestProvider().dogecoinSendData(
+                    dogecoinToken(),
+                    BigDecimal("10"),
+                    dogecoinQuote(gasRateUnits = null),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `dogecoin quote rejects malformed or different gas rate units`() {
+        listOf("", " satsperbyte ", "gwei", "coinsperbyte").forEach { gasRateUnits ->
+            assertThrows(IllegalArgumentException::class.java) {
+                runBlocking {
+                    TestProvider().dogecoinSendData(
+                        dogecoinToken(),
+                        BigDecimal("10"),
+                        dogecoinQuote(gasRateUnits = gasRateUnits),
+                    )
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `dogecoin quote rejects missing nonpositive or excessive gas rates`() {
+        listOf(null, "", "0", "-1", "1000001", Long.MAX_VALUE.toString()).forEach { gasRate ->
+            assertThrows(IllegalArgumentException::class.java) {
+                runBlocking {
+                    TestProvider().dogecoinSendData(
+                        dogecoinToken(),
+                        BigDecimal("10"),
+                        dogecoinQuote(
+                            gasRateUnits = "satsperbyte",
+                            recommendedGasRate = gasRate,
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `dogecoin quote rejects missing nonpositive or excessive dust thresholds`() {
+        listOf(null, "", "0", "-1", "1000000001", Long.MAX_VALUE.toString()).forEach { dustThreshold ->
+            assertThrows(IllegalArgumentException::class.java) {
+                runBlocking {
+                    TestProvider().dogecoinSendData(
+                        dogecoinToken(),
+                        BigDecimal("10"),
+                        dogecoinQuote(
+                            gasRateUnits = "satsperbyte",
+                            dustThreshold = dustThreshold,
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    private fun dogecoinToken() = Token(
+        coin = Coin("dogecoin", "Dogecoin", "DOGE"),
+        blockchain = Blockchain(BlockchainType.Dogecoin, "Dogecoin", null),
+        type = TokenType.Native,
+        decimals = 8,
+    )
+
+    private fun dogecoinQuote(
+        gasRateUnits: String?,
+        recommendedGasRate: String? = "750000",
+        dustThreshold: String? = "100000000",
+    ) = Response.QuoteSwap(
+        inbound_address = "D9EGy2TqzyLmL1PJ9K8LhoM9HuZaogDkJY",
+        inbound_confirmation_seconds = 60,
+        outbound_delay_seconds = 60,
+        fees = Response.QuoteSwap.Fees(
+            affiliate = BigDecimal.ZERO,
+            outbound = BigDecimal.ONE,
+            liquidity = BigDecimal.ONE,
+            total = BigDecimal("2"),
+        ),
+        router = null,
+        expiry = 1_800_000_000,
+        dust_threshold = dustThreshold,
+        recommended_gas_rate = recommendedGasRate,
+        gas_rate_units = gasRateUnits,
+        memo = "=:THOR.RUNE:thor1destination",
+        expected_amount_out = BigDecimal.ONE,
+        streaming_swap_seconds = 6,
+        total_swap_seconds = 126,
+    )
 }

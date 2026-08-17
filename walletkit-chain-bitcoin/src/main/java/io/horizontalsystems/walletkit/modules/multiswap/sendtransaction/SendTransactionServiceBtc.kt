@@ -45,8 +45,20 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import java.math.BigDecimal
 
-internal fun effectiveExternalFeeRate(recommended: Int, hardMinimum: Int?): Int =
-    maxOf(recommended, hardMinimum ?: recommended)
+private const val MAX_EXTERNAL_UTXO_FEE_RATE = 1_000_000
+
+internal fun effectiveExternalFeeRate(recommended: Int, hardMinimum: Int?): Int {
+    require(recommended in 1..MAX_EXTERNAL_UTXO_FEE_RATE) {
+        "Invalid external UTXO fee rate"
+    }
+
+    val effective = maxOf(recommended, hardMinimum ?: recommended)
+    require(effective in 1..MAX_EXTERNAL_UTXO_FEE_RATE) {
+        "Invalid effective UTXO fee rate"
+    }
+
+    return effective
+}
 
 class SendTransactionServiceBtc(private val token: Token) : AbstractSendTransactionService(true, false), ISignOnlySendTransactionService {
     private val adapter = App.adapterManager.getAdapterForToken<ISendBitcoinAdapter>(token)!!
