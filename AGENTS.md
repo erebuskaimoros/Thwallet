@@ -11,6 +11,22 @@
 - Thwallet is independent and must not claim official THORChain, Nine Realms,
   or Horizontal Systems endorsement.
 
+## Cross-platform parity
+
+- Thwallet has two first-class products: this Android repository and the iOS
+  repository at `https://github.com/erebuskaimoros/Thwallet-iOS`.
+- Scope blockchain, protocol, swap, and wallet-format changes for both Android
+  and iOS by default. "Complete" means both implementations are tested and
+  pushed, unless an intentional platform exception is recorded in both
+  repositories.
+- Keep persisted chain/token identifiers, derivation paths, address policies,
+  quote validation, fee rules, and user-visible safety behavior equivalent
+  across platforms. Platform-native implementations do not need identical
+  internal structure.
+- Review upstream changes for cross-platform impact and record temporary parity
+  gaps explicitly; do not let one platform silently become the reference
+  implementation for the other.
+
 ## Product policy
 
 - Direct THORChain swaps must not charge a wallet affiliate fee.

@@ -1,7 +1,9 @@
 # Thwallet
 
-Thwallet is an experimental, community-maintained Android wallet focused on
-THORChain-native self-custody and swaps.
+This repository is the Android half of Thwallet, an experimental,
+community-maintained wallet focused on THORChain-native self-custody and swaps.
+The companion iOS product is maintained in
+[Thwallet-iOS](https://github.com/erebuskaimoros/Thwallet-iOS).
 
 The project is derived from the MIT-licensed
 [Unstoppable Wallet Android](https://github.com/horizontalsystems/unstoppable-wallet-android)
@@ -39,6 +41,8 @@ and later.
 ```
 
 Project-specific contribution and security rules are in [AGENTS.md](./AGENTS.md).
+Blockchain and protocol features are scoped for Android and iOS together by
+default; intentional parity gaps must be documented in both repositories.
 
 ## Independence and attribution
 

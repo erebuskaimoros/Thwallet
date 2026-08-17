@@ -7,6 +7,22 @@
 - Upstream: `https://github.com/horizontalsystems/unstoppable-wallet-android.git`
 - Stack: Kotlin, Android, Jetpack Compose, Gradle, JDK 17
 
+## Cross-platform product policy
+
+Thwallet is maintained as a two-platform product. This Android repository is
+paired with the Swift iOS fork at
+`https://github.com/erebuskaimoros/Thwallet-iOS`. New blockchain, protocol,
+swap, persistence, and wallet-format work is cross-platform by default. A
+feature is not considered complete until equivalent security and user behavior
+is tested and pushed on both platforms, unless an intentional exception is
+recorded in both repositories.
+
+Parity means matching persisted identifiers, derivation paths, address and fee
+policies, quote validation, transaction safety, and user-visible capabilities;
+it does not require Kotlin and Swift to share internal structure. During
+upstream synchronization, audit whether either platform gained or lost a
+capability and record temporary divergence explicitly.
+
 ## Current product policy
 
 The direct THORChain provider sends neither `affiliate` nor `affiliate_bps` in
