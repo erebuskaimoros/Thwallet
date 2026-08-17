@@ -79,7 +79,11 @@ transactions are polled by hash and promoted from pending when a receipt is
 mined; unknown or dropped hashes deliberately remain pending rather than being
 guessed failed. Indexed history and swap routes on every new network still
 depend on the configured third-party provider or swap backend advertising that
-chain. This expansion is not by itself a release security review.
+chain. Current Android builds inherit publicly embedded explorer client keys
+from upstream; those are not Thwallet-owned release credentials and must be
+replaced or explicitly reviewed. Canary simultaneous multi-chain history sync,
+because per-network throttling can still burst a shared provider key. This
+expansion is not by itself a release security review.
 
 ## Native Dogecoin implementation
 
