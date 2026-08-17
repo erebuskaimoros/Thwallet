@@ -67,6 +67,7 @@
                 <data android:scheme="solana" />
                 <data android:scheme="zcash" />
                 <data android:scheme="litecoin" />
+                <data android:scheme="dogecoin" />
             </intent-filter>
             <intent-filter android:label="@string/App_Name">
                 <action android:name="android.intent.action.VIEW" />

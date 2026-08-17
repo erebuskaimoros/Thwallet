@@ -5,6 +5,7 @@ import io.horizontalsystems.walletkit.core.IFeeRateProvider
 import io.horizontalsystems.feeratekit.FeeRateKit
 import io.horizontalsystems.feeratekit.model.FeeProviderConfig
 import io.horizontalsystems.feeratekit.providers.BitcoinFeeProvider
+import io.horizontalsystems.dogecoinkit.DogecoinKit
 import java.math.BigInteger
 
 class FeeRateProvider(appConfig: IAppConfigProvider) {
@@ -67,6 +68,19 @@ class DashFeeRateProvider(private val feeRateProvider: FeeRateProvider) : IFeeRa
     override suspend fun getFeeRates(): FeeRates {
         val feeRate = feeRateProvider.dashFeeRate()
         return FeeRates(feeRate.toInt())
+    }
+}
+
+class DogecoinFeeRateProvider : IFeeRateProvider {
+    override val hardMinimumFeeRate = minimumFeeRate
+
+    override suspend fun getFeeRates(): FeeRates = FeeRates(
+        recommended = DogecoinKit.recommendedFeeRate,
+        minimum = minimumFeeRate,
+    )
+
+    companion object {
+        private const val minimumFeeRate = 100
     }
 }
 

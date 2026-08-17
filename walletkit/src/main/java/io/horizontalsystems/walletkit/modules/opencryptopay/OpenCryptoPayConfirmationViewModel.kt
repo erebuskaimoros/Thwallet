@@ -99,7 +99,9 @@ class OpenCryptoPayConfirmationViewModel(
     override fun createState() = OpenCryptoPayConfirmationUiState(
         networkFee = sendTransactionState.networkFee,
         cautions = fetchError?.let { listOf(it) } ?: sendTransactionState.cautions,
-        payEnabled = fetchError == null && sendTransactionState.sendable,
+        payEnabled = fetchError == null &&
+                sendTransactionState.sendable &&
+                isOcpQuoteActive(expirationIso),
         transactionFields = sendTransactionState.fields,
         sectionViewItems = sectionViewItems,
         initialLoading = initialLoading,
@@ -132,6 +134,10 @@ class OpenCryptoPayConfirmationViewModel(
     }
 
     suspend fun pay() {
+        // Recheck at the point of no return. The UI check prevents ordinary taps, while this
+        // guard closes the race between rendering an enabled button and starting the broadcast.
+        requireOcpQuoteActive(expirationIso)
+
         val baseUrl = proofUrl.substringBefore("/tx/").let { it.trimEnd('/') + "/" }
         if (wallet.token.blockchainType == BlockchainType.Bitcoin) {
             val signed = withContext(Dispatchers.IO) {
@@ -275,6 +281,28 @@ class OpenCryptoPayConfirmationViewModel(
                 wallet, callbackUrl, quoteId, paymentId, method, asset, assetAmount, merchant, expirationIso, minFee, App.appDatabase.ocpPaymentDao()
             ) as T
         }
+    }
+}
+
+internal fun isOcpQuoteActive(
+    expirationIso: String,
+    now: Instant = Instant.now(),
+): Boolean {
+    val expiration = try {
+        Instant.parse(expirationIso)
+    } catch (_: Exception) {
+        return false
+    }
+
+    return expiration.isAfter(now)
+}
+
+internal fun requireOcpQuoteActive(
+    expirationIso: String,
+    now: Instant = Instant.now(),
+) {
+    check(isOcpQuoteActive(expirationIso, now)) {
+        "OpenCryptoPay quote has expired"
     }
 }
 

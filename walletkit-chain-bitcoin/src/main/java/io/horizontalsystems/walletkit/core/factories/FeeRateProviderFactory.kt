@@ -6,6 +6,7 @@ import io.horizontalsystems.walletkit.core.IFeeRateProvider
 import io.horizontalsystems.walletkit.core.providers.BitcoinCashFeeRateProvider
 import io.horizontalsystems.walletkit.core.providers.BitcoinFeeRateProvider
 import io.horizontalsystems.walletkit.core.providers.DashFeeRateProvider
+import io.horizontalsystems.walletkit.core.providers.DogecoinFeeRateProvider
 import io.horizontalsystems.walletkit.core.providers.ECashFeeRateProvider
 import io.horizontalsystems.walletkit.core.providers.LitecoinFeeRateProvider
 import io.horizontalsystems.marketkit.models.BlockchainType
@@ -22,6 +23,7 @@ object FeeRateProviderFactory {
             is BlockchainType.BitcoinCash -> BitcoinCashFeeRateProvider(feeRateProvider)
             is BlockchainType.ECash -> ECashFeeRateProvider()
             is BlockchainType.Dash -> DashFeeRateProvider(feeRateProvider)
+            is BlockchainType.Dogecoin -> DogecoinFeeRateProvider()
             else -> null
         }
     }

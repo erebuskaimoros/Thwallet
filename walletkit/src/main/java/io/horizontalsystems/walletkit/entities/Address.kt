@@ -37,6 +37,7 @@ val BitcoinAddress.tokenType: TokenType
         BlockchainType.ECash -> TokenType.Native
         BlockchainType.Litecoin -> TokenType.Derived(this.derivation ?: TokenType.Derivation.Bip84)
         BlockchainType.Dash -> TokenType.Native
+        BlockchainType.Dogecoin -> TokenType.Native
 
         BlockchainType.Zcash,
         BlockchainType.Ethereum,

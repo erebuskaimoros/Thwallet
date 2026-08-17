@@ -18,14 +18,16 @@ import io.horizontalsystems.marketkit.models.Token
  */
 object SwapPopularTokens {
 
+    internal val baseNativeTypes = listOf(
+        BlockchainType.Bitcoin,
+        BlockchainType.Ethereum,
+        BlockchainType.Monero,
+        BlockchainType.Zcash,
+        BlockchainType.Dogecoin,
+        BlockchainType.Tron,
+    )
+
     fun build(marketKit: MarketKitWrapper, context: Token?): List<Token> {
-        val baseNativeTypes = listOf(
-            BlockchainType.Bitcoin,
-            BlockchainType.Ethereum,
-            BlockchainType.Monero,
-            BlockchainType.Zcash,
-            BlockchainType.Tron,
-        )
         val natives = marketKit.tokens(baseNativeTypes.map { it.defaultTokenQuery })
             .associateBy { it.blockchainType }
 

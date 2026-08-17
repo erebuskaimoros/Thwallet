@@ -93,6 +93,7 @@ val TokenQuery.isSupported: Boolean
         }
         BlockchainType.ECash,
         BlockchainType.Dash,
+        BlockchainType.Dogecoin,
         BlockchainType.Zcash -> {
             tokenType is TokenType.Native
         }
@@ -143,6 +144,7 @@ val Blockchain.description: String
         BlockchainType.Zcash -> "ZEC"
         BlockchainType.Litecoin -> "LTC (BIP44, BIP49, BIP84, BIP86)"
         BlockchainType.Dash -> "DASH"
+        BlockchainType.Dogecoin -> "DOGE"
         BlockchainType.Ethereum -> "ETH, ERC20 tokens"
         BlockchainType.BinanceSmartChain -> "BNB, BEP20 tokens"
         BlockchainType.Polygon -> "MATIC, ERC20 tokens"
@@ -205,6 +207,7 @@ private val blockchainOrderMap: Map<BlockchainType, Int> by lazy {
         BlockchainType.Thorchain,
         BlockchainType.Mayachain,
         BlockchainType.Dash,
+        BlockchainType.Dogecoin,
         BlockchainType.Litecoin,
         BlockchainType.BitcoinCash,
         BlockchainType.Avalanche,
@@ -259,6 +262,7 @@ val BlockchainType.title: String
     BlockchainType.ECash -> "Ecash"
     BlockchainType.Litecoin -> "Litecoin"
     BlockchainType.Dash -> "Dash"
+    BlockchainType.Dogecoin -> "Dogecoin"
     BlockchainType.Zcash -> "Zcash"
     BlockchainType.Ethereum -> "Ethereum"
     BlockchainType.BinanceSmartChain -> "BNB Smart Chain"
@@ -353,6 +357,7 @@ val BlockchainType.isEvm: Boolean
         BlockchainType.Bitcoin,
         BlockchainType.BitcoinCash,
         BlockchainType.Dash,
+        BlockchainType.Dogecoin,
         BlockchainType.ECash,
         BlockchainType.Litecoin,
         BlockchainType.Solana,
@@ -385,6 +390,7 @@ fun BlockchainType.supports(accountType: AccountType): Boolean {
                 BlockchainType.Bitcoin,
                 BlockchainType.BitcoinCash,
                 BlockchainType.Dash,
+                BlockchainType.Dogecoin,
                 BlockchainType.ECash,
                 BlockchainType.Ethereum,
                 BlockchainType.Fantom,
@@ -412,6 +418,7 @@ fun BlockchainType.supports(accountType: AccountType): Boolean {
                 BlockchainType.Litecoin -> coinTypes.contains(ExtendedKeyCoinType.Litecoin)
                 BlockchainType.BitcoinCash,
                 BlockchainType.Dash,
+                BlockchainType.Dogecoin,
                 BlockchainType.ECash -> coinTypes.contains(ExtendedKeyCoinType.Bitcoin) && accountType.hdExtendedKey.purposes.contains(HDWallet.Purpose.BIP44)
                 else -> false
             }
@@ -549,7 +556,8 @@ fun Token.supports(accountType: AccountType): Boolean {
 
                 BlockchainType.BitcoinCash,
                 BlockchainType.ECash,
-                BlockchainType.Dash -> {
+                BlockchainType.Dash,
+                BlockchainType.Dogecoin -> {
                     accountType.hdExtendedKey.purposes.contains(HDWallet.Purpose.BIP44)
                 }
 
@@ -600,7 +608,7 @@ val TokenType.AddressType.bitcoinCashCoinType: BitcoinCashCoinType
     }
 
 private val noBadgeCoinCodes by lazy {
-    listOf("AVAX", "XLM", "DASH", "ZEC", "XMR", "XEC", "POL", "SOL", "XDAI", "FTM")
+    listOf("AVAX", "XLM", "DASH", "DOGE", "ZEC", "XMR", "XEC", "POL", "SOL", "XDAI", "FTM")
 }
 
 val Token.coinCodeWithNetwork: String

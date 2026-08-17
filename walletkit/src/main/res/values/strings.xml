@@ -1360,11 +1360,11 @@
     <string name="SettingsSecurity_SortingBip69">Deterministic BIP69</string>
     <string name="SettingsSecurity_SortingBip69Description">Lexicographical Indexing</string>
     <string name="SettingsSecurity_SyncModeBlockchair">Blockchair API</string>
-    <string name="SettingsSecurity_SyncModeBlockchairDescription">Very Fast</string>
+    <string name="SettingsSecurity_SyncModeBlockchairDescription">Very fast. Trusts an external indexer.</string>
     <string name="SettingsSecurity_SyncModeHybrid" translatable="false">Hybrid</string>
-    <string name="SettingsSecurity_SyncModeHybridDescription">Fast</string>
+    <string name="SettingsSecurity_SyncModeHybridDescription">Fast. Trusts an external indexer for history.</string>
     <string name="SettingsSecurity_SyncModeBlockchain">Blockchain</string>
-    <string name="SettingsSecurity_SyncModeBlockchainDescription">Slow. Highest Privacy.</string>
+    <string name="SettingsSecurity_SyncModeBlockchainDescription">Slow. Verifies peer-provided chain data.</string>
     <string name="SettingsSecurity_HideSuspiciousTxs">Hide Suspicious Txs</string>
     <string name="SettingsSecurity_HideSuspiciousTxs_Description">Hides suspicious small transfers often used in phishing attacks.</string>
 

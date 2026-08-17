@@ -70,11 +70,11 @@ moneroKit = "ccd6dd8b"
 zanoKit = "d83a9a5"
 stellarKit = "4ecccc5"
 tonKit = "947c48a"
-bitcoinKit = "dad7ed4"
+bitcoinKit = "5252973e174ee622f430b31235c21634975f2c1c"
 hdWalletKit = "a74b51f3"
 ethereumKit = "56bd013fcdbd93762f73edc152c347da5d12ff7e"
 feeRateKit = "393cc14"
-marketKit = "2134f02"
+marketKit = "7e7e05d4118945efca68d4545afcb5c1933e1e5b"
 solanaKit = "b487161"
 tronKit = "6fc27cf"
 thorchainKit = "9de6579"
@@ -237,13 +237,14 @@ kit-monero = { module = "com.github.horizontalsystems:monero-kit-android", versi
 kit-zano = { module = "com.github.horizontalsystems:zano-kit-android", version.ref = "zanoKit" }
 kit-stellar = { module = "com.github.horizontalsystems:stellar-kit-android", version.ref = "stellarKit" }
 kit-ton = { module = "com.github.horizontalsystems:ton-kit-android", version.ref = "tonKit" }
-kit-bitcoin = { module = "com.github.horizontalsystems:bitcoin-kit-android", version.ref = "bitcoinKit" }
+kit-bitcoin = { module = "com.github.erebuskaimoros:bitcoin-kit-android", version.ref = "bitcoinKit" }
 kit-hd-wallet = { module = "com.github.horizontalsystems:hd-wallet-kit-android", version.ref = "hdWalletKit" }
-kit-hodler = { module = "com.github.horizontalsystems.bitcoin-kit-android:hodler", version.ref = "bitcoinKit" }
-kit-bitcoin-core = { module = "com.github.horizontalsystems.bitcoin-kit-android:bitcoincore", version.ref = "bitcoinKit" }
+kit-hodler = { module = "com.github.erebuskaimoros.bitcoin-kit-android:hodler", version.ref = "bitcoinKit" }
+kit-bitcoin-core = { module = "com.github.erebuskaimoros.bitcoin-kit-android:bitcoincore", version.ref = "bitcoinKit" }
+kit-dogecoin = { module = "com.github.erebuskaimoros.bitcoin-kit-android:dogecoinkit", version.ref = "bitcoinKit" }
 kit-ethereum = { module = "com.github.erebuskaimoros:ethereum-kit-android", version.ref = "ethereumKit" }
 kit-fee-rate = { module = "com.github.horizontalsystems:blockchain-fee-rate-kit-android", version.ref = "feeRateKit" }
-kit-market = { module = "com.github.horizontalsystems:market-kit-android", version.ref = "marketKit" }
+kit-market = { module = "com.github.erebuskaimoros:market-kit-android", version.ref = "marketKit" }
 kit-solana = { module = "com.github.horizontalsystems:solana-kit-android", version.ref = "solanaKit" }
 kit-tron = { module = "com.github.horizontalsystems:tron-kit-android", version.ref = "tronKit" }
 kit-thorchain = { module = "com.github.horizontalsystems:thorchain-kit-android", version.ref = "thorchainKit" }

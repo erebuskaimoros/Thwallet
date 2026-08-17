@@ -66,5 +66,7 @@ interface ISendBitcoinAdapter {
 
 interface IFeeRateProvider {
     val feeRateChangeable: Boolean get() = false
+    /** A chain-policy floor that externally supplied fee rates must never undercut. */
+    val hardMinimumFeeRate: Int? get() = null
     suspend fun getFeeRates() : FeeRates
 }

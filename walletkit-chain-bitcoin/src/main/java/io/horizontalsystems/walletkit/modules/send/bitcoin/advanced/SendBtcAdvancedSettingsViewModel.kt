@@ -61,7 +61,8 @@ class SendBtcAdvancedSettingsViewModel(
             BlockchainType.BitcoinCash,
             BlockchainType.Litecoin,
             BlockchainType.ECash,
-            BlockchainType.Dash -> true
+            BlockchainType.Dash,
+            BlockchainType.Dogecoin -> true
             else -> false
         }
     }

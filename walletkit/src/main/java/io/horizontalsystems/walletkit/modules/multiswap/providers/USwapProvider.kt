@@ -34,6 +34,71 @@ import retrofit2.http.Query
 import java.math.BigDecimal
 import java.math.BigInteger
 
+private val uSwapBlockchainTypes = mapOf(
+    "43114" to BlockchainType.Avalanche,
+    "10" to BlockchainType.Optimism,
+    "8453" to BlockchainType.Base,
+    "728126428" to BlockchainType.Tron,
+    "42161" to BlockchainType.ArbitrumOne,
+    "56" to BlockchainType.BinanceSmartChain,
+    "solana" to BlockchainType.Solana,
+    "137" to BlockchainType.Polygon,
+    "bitcoin" to BlockchainType.Bitcoin,
+    "1" to BlockchainType.Ethereum,
+    "zcash" to BlockchainType.Zcash,
+    "bitcoincash" to BlockchainType.BitcoinCash,
+    "litecoin" to BlockchainType.Litecoin,
+    "dogecoin" to BlockchainType.Dogecoin,
+    "stellar" to BlockchainType.Stellar,
+    "ton" to BlockchainType.Ton,
+    "dash" to BlockchainType.Dash,
+    "ecash" to BlockchainType.ECash,
+    "monero" to BlockchainType.Monero,
+    "zano" to BlockchainType.Zano,
+    "100" to BlockchainType.Gnosis,
+    "25" to EvmNetworkCatalog.cronos,
+    "81457" to EvmNetworkCatalog.blast,
+    "5000" to EvmNetworkCatalog.mantle,
+    "1329" to EvmNetworkCatalog.sei,
+    "999" to EvmNetworkCatalog.hyperEvm,
+    "4663" to EvmNetworkCatalog.robinhood,
+//    "" to BlockchainType.Fantom,
+//    "" to BlockchainType.ZkSync,
+)
+
+internal fun uSwapBlockchainType(chainId: String): BlockchainType? =
+    uSwapBlockchainTypes[chainId]
+
+private val simpleUtxoBlockchainTypes = setOf(
+    BlockchainType.Bitcoin,
+    BlockchainType.BitcoinCash,
+    BlockchainType.Litecoin,
+    BlockchainType.Dogecoin,
+    BlockchainType.Dash,
+    BlockchainType.ECash,
+)
+
+internal fun buildUSwapSimpleUtxoSendData(
+    blockchainType: BlockchainType,
+    address: String,
+    memo: String?,
+    amount: BigDecimal,
+): SendTransactionData.Btc {
+    require(blockchainType in simpleUtxoBlockchainTypes) {
+        "Not a simple UTXO chain: $blockchainType"
+    }
+
+    return SendTransactionData.Btc(
+        address = address,
+        memo = memo,
+        amount = amount,
+        recommendedGasRate = null,
+        minimumSendAmount = null,
+        changeToFirstInput = false,
+        utxoFilters = UtxoFilters(),
+    )
+}
+
 class USwapProvider(
     private val provider: UProvider,
     // Narrows the sell side to sources the host app can actually execute (e.g. a
@@ -69,36 +134,7 @@ class USwapProvider(
         mapOf("x-api-key" to App.appConfigProvider.uswapApiKey)
     ).create(UnstoppableAPI::class.java)
 
-    private val blockchainTypes = mapOf(
-        "43114" to BlockchainType.Avalanche,
-        "10" to BlockchainType.Optimism,
-        "8453" to BlockchainType.Base,
-        "728126428" to BlockchainType.Tron,
-        "42161" to BlockchainType.ArbitrumOne,
-        "56" to BlockchainType.BinanceSmartChain,
-        "solana" to BlockchainType.Solana,
-        "137" to BlockchainType.Polygon,
-        "bitcoin" to BlockchainType.Bitcoin,
-        "1" to BlockchainType.Ethereum,
-        "zcash" to BlockchainType.Zcash,
-        "bitcoincash" to BlockchainType.BitcoinCash,
-        "litecoin" to BlockchainType.Litecoin,
-        "stellar" to BlockchainType.Stellar,
-        "ton" to BlockchainType.Ton,
-        "dash" to BlockchainType.Dash,
-        "ecash" to BlockchainType.ECash,
-        "monero" to BlockchainType.Monero,
-        "zano" to BlockchainType.Zano,
-        "100" to BlockchainType.Gnosis,
-        "25" to EvmNetworkCatalog.cronos,
-        "81457" to EvmNetworkCatalog.blast,
-        "5000" to EvmNetworkCatalog.mantle,
-        "1329" to EvmNetworkCatalog.sei,
-        "999" to EvmNetworkCatalog.hyperEvm,
-        "4663" to EvmNetworkCatalog.robinhood,
-//        "" to BlockchainType.Fantom,
-//        "" to BlockchainType.ZkSync,
-    )
+    private val blockchainTypes = uSwapBlockchainTypes
 
     private val chainIdByBlockchainType = blockchainTypes.entries.associate { (k, v) -> v to k }
 
@@ -183,6 +219,7 @@ class USwapProvider(
                 BlockchainType.Bitcoin,
                 BlockchainType.BitcoinCash,
                 BlockchainType.Litecoin,
+                BlockchainType.Dogecoin,
                 BlockchainType.Zcash,
                 BlockchainType.Dash,
                 BlockchainType.ECash,
@@ -608,6 +645,7 @@ class USwapProvider(
             BlockchainType.Bitcoin,
             BlockchainType.BitcoinCash,
             BlockchainType.Litecoin,
+            BlockchainType.Dogecoin,
             BlockchainType.Dash,
             BlockchainType.ECash,
                 -> {
@@ -615,14 +653,12 @@ class USwapProvider(
                     throw IllegalStateException("Only simple BTC tx providers are supported")
                 }
 
-                return SendTransactionData.Btc(
-                    address = execution.resolvedDepositAddress() ?: throw IllegalStateException("No deposit address"),
+                return buildUSwapSimpleUtxoSendData(
+                    blockchainType = blockchainType,
+                    address = execution.resolvedDepositAddress()
+                        ?: throw IllegalStateException("No deposit address"),
                     memo = execution.resolvedMemo(),
                     amount = amountIn,
-                    recommendedGasRate = null,
-                    minimumSendAmount = null,
-                    changeToFirstInput = false,
-                    utxoFilters = UtxoFilters(),
                 )
             }
 

@@ -17,6 +17,7 @@ import io.horizontalsystems.walletkit.entities.tokenType
 import io.horizontalsystems.walletkit.modules.address.AddressParserChain
 import io.horizontalsystems.hdwalletkit.HDExtendedKey
 import io.horizontalsystems.marketkit.models.BlockchainType
+import io.horizontalsystems.marketkit.models.TokenType
 import io.horizontalsystems.walletkit.core.chain.ChainRegistry
 import io.horizontalsystems.walletkit.core.ethereum.EvmNetworkCatalog
 import kotlinx.coroutines.Dispatchers
@@ -178,6 +179,18 @@ class WatchAddressViewModel(
     }
 
     private fun setAddress(address: Address) {
+        val parsedType = addressType(address)
+        if (parsedType == Type.BitcoinAddress &&
+            (address !is BitcoinAddress || bitcoinWatchAccountTypeOrNull(address) == null)
+        ) {
+            this.address = null
+            type = Type.Unsupported
+            inputState = DataState.Error(UnsupportedAddress)
+            syncSubmitButtonType()
+            emitState()
+            return
+        }
+
         this.address = address
         if (!accountNameEdited) {
             address.domain?.let {
@@ -185,7 +198,7 @@ class WatchAddressViewModel(
             }
         }
 
-        type = addressType(address)
+        type = parsedType
         inputState = DataState.Success(address.domain ?: address.hex)
 
         syncSubmitButtonType()
@@ -224,7 +237,8 @@ class WatchAddressViewModel(
             BlockchainType.BitcoinCash,
             BlockchainType.ECash,
             BlockchainType.Litecoin,
-            BlockchainType.Dash -> Type.BitcoinAddress
+            BlockchainType.Dash,
+            BlockchainType.Dogecoin -> Type.BitcoinAddress
 
             BlockchainType.Ethereum,
             BlockchainType.BinanceSmartChain,
@@ -311,7 +325,7 @@ class WatchAddressViewModel(
         Type.XPubKey -> xPubKey?.let { AccountType.HdExtendedKey(it) }
         Type.BitcoinAddress -> address?.let {
             if (it is BitcoinAddress) {
-                AccountType.BitcoinAddress(address = it.hex, blockchainType = it.blockchainType!!, tokenType = it.tokenType)
+                bitcoinWatchAccountTypeOrNull(it)
             } else {
                 throw IllegalStateException("Unsupported address type")
             }
@@ -343,6 +357,25 @@ class WatchAddressViewModel(
         MoneroAddress,
         Unsupported
     }
+}
+
+internal fun bitcoinWatchAccountTypeOrNull(address: BitcoinAddress): AccountType.BitcoinAddress? {
+    val blockchainType = address.blockchainType ?: return null
+
+    // DogecoinKit can monitor a single public-key hash, but not an arbitrary script hash.
+    // Keep P2SH valid for ordinary sends while refusing to persist a watch account that the
+    // adapter cannot initialize.
+    if (blockchainType == BlockchainType.Dogecoin &&
+        address.derivation != TokenType.Derivation.Bip44
+    ) {
+        return null
+    }
+
+    return AccountType.BitcoinAddress(
+        address = address.hex,
+        blockchainType = blockchainType,
+        tokenType = address.tokenType,
+    )
 }
 
 data class WatchAddressUiState(

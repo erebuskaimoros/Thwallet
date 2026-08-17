@@ -32,10 +32,8 @@ dependencies {
     api(project(":walletkit"))
 
     api(libs.kit.bitcoin)
+    api(libs.kit.dogecoin)
     api(libs.kit.fee.rate)
-
-    api(libs.kit.bitcoin)
 
     testImplementation(libs.junit)
 }
-

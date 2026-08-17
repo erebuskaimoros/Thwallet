@@ -187,7 +187,8 @@ val BlockchainType.blockTime : Long?
 
         BlockchainType.Monero -> 120
 
-        BlockchainType.Zano -> 60
+        BlockchainType.Zano,
+        BlockchainType.Dogecoin -> 60
 
         else -> null
     }

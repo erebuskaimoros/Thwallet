@@ -40,6 +40,7 @@ class SwapSuspensionTest {
         assertEquals("BASE.ETH", CanonicalAssetId.of(token(BlockchainType.Base, TokenType.Native)))
         assertEquals("BSC.BNB", CanonicalAssetId.of(token(BlockchainType.BinanceSmartChain, TokenType.Native)))
         assertEquals("GNO.XDAI", CanonicalAssetId.of(token(BlockchainType.Gnosis, TokenType.Native)))
+        assertEquals("DOGE.DOGE", CanonicalAssetId.of(token(BlockchainType.Dogecoin, TokenType.Native)))
     }
 
     @Test

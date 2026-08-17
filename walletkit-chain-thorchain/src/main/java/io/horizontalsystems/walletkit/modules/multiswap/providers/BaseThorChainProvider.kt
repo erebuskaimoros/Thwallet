@@ -60,7 +60,7 @@ abstract class BaseThorChainProvider(
 
     companion object {
         // bump to invalidate cached asset maps when the mapping logic changes
-        private const val ASSETS_MAP_VERSION = 4
+        private const val ASSETS_MAP_VERSION = 5
     }
 
     protected val thornodeAPI =
@@ -74,6 +74,7 @@ abstract class BaseThorChainProvider(
         "BTC" to BlockchainType.Bitcoin,
         "ETH" to BlockchainType.Ethereum,
         "LTC" to BlockchainType.Litecoin,
+        "DOGE" to BlockchainType.Dogecoin,
         "BASE" to BlockchainType.Base,
         "DASH" to BlockchainType.Dash,
         "ZEC" to BlockchainType.Zcash,
@@ -123,6 +124,7 @@ abstract class BaseThorChainProvider(
                 BlockchainType.BitcoinCash,
                 BlockchainType.Bitcoin,
                 BlockchainType.Litecoin,
+                BlockchainType.Dogecoin,
                 BlockchainType.Dash,
                 BlockchainType.Zcash -> {
                     var nativeTokenQueries = blockchainType.nativeTokenQueries
@@ -413,6 +415,21 @@ abstract class BaseThorChainProvider(
                 )
             }
 
+            BlockchainType.Dogecoin -> {
+                SendTransactionData.Btc(
+                    address = inboundAddress,
+                    memo = memo,
+                    amount = amountIn,
+                    recommendedGasRate = recommendedGasRate,
+                    minimumSendAmount = dustThreshold?.plus(1),
+                    changeToFirstInput = true,
+                    utxoFilters = UtxoFilters(
+                        scriptTypes = listOf(ScriptType.P2PKH),
+                        maxOutputsCountForInputs = 10,
+                    ),
+                )
+            }
+
             else -> throw IllegalArgumentException()
         }
     }
@@ -528,4 +545,3 @@ class DepositWithExpiryMethod(
     override val methodSignature = "depositWithExpiry(address,address,uint256,string,uint256)"
     override fun getArguments() = listOf(inboundAddress, asset, amount, memo, expiry)
 }
-

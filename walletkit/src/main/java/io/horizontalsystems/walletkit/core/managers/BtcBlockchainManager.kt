@@ -20,7 +20,12 @@ class BtcBlockchainManager(
     val transactionSortModeUpdatedObservable: Observable<BlockchainType> =
         transactionSortModeUpdatedSubject
 
-    private val blockchairSyncEnabledBlockchains = listOf(BlockchainType.Bitcoin, BlockchainType.BitcoinCash, BlockchainType.Litecoin)
+    private val blockchairSyncEnabledBlockchains = listOf(
+        BlockchainType.Bitcoin,
+        BlockchainType.BitcoinCash,
+        BlockchainType.Litecoin,
+        BlockchainType.Dogecoin,
+    )
 
     val blockchainTypes by lazy {
         listOf(
@@ -28,6 +33,7 @@ class BtcBlockchainManager(
             BlockchainType.BitcoinCash,
             BlockchainType.Litecoin,
             BlockchainType.Dash,
+            BlockchainType.Dogecoin,
             BlockchainType.ECash,
         )
     }

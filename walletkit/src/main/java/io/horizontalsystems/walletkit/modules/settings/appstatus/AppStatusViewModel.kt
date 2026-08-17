@@ -166,6 +166,7 @@ class AppStatusViewModel(
                 BlockchainType.Bitcoin,
                 BlockchainType.BitcoinCash,
                 BlockchainType.Dash,
+                BlockchainType.Dogecoin,
                 BlockchainType.Litecoin,
                 BlockchainType.ECash
             )
@@ -208,6 +209,7 @@ class AppStatusViewModel(
                 BlockchainType.Bitcoin,
                 BlockchainType.BitcoinCash,
                 BlockchainType.Dash,
+                BlockchainType.Dogecoin,
                 BlockchainType.Litecoin,
                 BlockchainType.ECash,
             )

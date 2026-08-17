@@ -48,6 +48,7 @@ class AddressViewModel(
                 BlockchainType.Bitcoin,
                 BlockchainType.BitcoinCash,
                 BlockchainType.Dash,
+                BlockchainType.Dogecoin,
                 BlockchainType.Litecoin,
                 BlockchainType.Zcash,
                 BlockchainType.Solana,

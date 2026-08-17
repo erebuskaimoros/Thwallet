@@ -14,6 +14,7 @@ import io.horizontalsystems.walletkit.core.stats.stat
 import io.horizontalsystems.walletkit.modules.manageaccount.showextendedkey.ShowExtendedKeyModule.DisplayKeyType
 import io.horizontalsystems.walletkit.ui.compose.TranslatableString
 import io.horizontalsystems.dashkit.MainNetDash
+import io.horizontalsystems.dogecoinkit.MainNetDogecoin
 import io.horizontalsystems.hdwalletkit.ExtendedKeyCoinType
 import io.horizontalsystems.hdwalletkit.HDExtendedKeyVersion
 import io.horizontalsystems.hdwalletkit.HDKeychain
@@ -92,7 +93,8 @@ class ShowExtendedKeyViewModel(
             Blockchain.Litecoin -> ExtendedKeyCoinType.Litecoin
             Blockchain.Bitcoin,
             Blockchain.BitcoinCash,
-            Blockchain.Dash -> ExtendedKeyCoinType.Bitcoin
+            Blockchain.Dash,
+            Blockchain.Dogecoin -> ExtendedKeyCoinType.Bitcoin
         }
 
     private val ExtendedKeyCoinType.blockchain: Blockchain
@@ -105,6 +107,7 @@ class ShowExtendedKeyViewModel(
         Bitcoin("Bitcoin", MainNet().coinType),
         BitcoinCash("Bitcoin Cash", MainNetBitcoinCash().coinType),
         Litecoin("Litecoin", MainNetLitecoin().coinType),
-        Dash("Dash", MainNetDash().coinType)
+        Dash("Dash", MainNetDash().coinType),
+        Dogecoin("Dogecoin", MainNetDogecoin().coinType),
     }
 }

@@ -45,6 +45,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import java.math.BigDecimal
 
+internal fun effectiveExternalFeeRate(recommended: Int, hardMinimum: Int?): Int =
+    maxOf(recommended, hardMinimum ?: recommended)
+
 class SendTransactionServiceBtc(private val token: Token) : AbstractSendTransactionService(true, false), ISignOnlySendTransactionService {
     private val adapter = App.adapterManager.getAdapterForToken<ISendBitcoinAdapter>(token)!!
     private val provider = FeeRateProviderFactory.provider(token.blockchainType)!!
@@ -160,7 +163,8 @@ class SendTransactionServiceBtc(private val token: Token) : AbstractSendTransact
         changeToFirstInput = data.changeToFirstInput
 
         data.recommendedGasRate?.let {
-            feeRateService.setRecommendedAndMin(it, it)
+            val effectiveRate = effectiveExternalFeeRate(it, provider.hardMinimumFeeRate)
+            feeRateService.setRecommendedAndMin(effectiveRate, effectiveRate)
         }
 
         feeService.setMemo(memo)

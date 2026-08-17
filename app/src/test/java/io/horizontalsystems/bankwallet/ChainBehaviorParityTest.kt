@@ -8,6 +8,7 @@ import io.horizontalsystems.walletkit.R
 import io.horizontalsystems.walletkit.chain.bitcoin.BitcoinCashChainPlugin
 import io.horizontalsystems.walletkit.chain.bitcoin.BitcoinChainPlugin
 import io.horizontalsystems.walletkit.chain.bitcoin.DashChainPlugin
+import io.horizontalsystems.walletkit.chain.bitcoin.DogecoinChainPlugin
 import io.horizontalsystems.walletkit.chain.bitcoin.ECashChainPlugin
 import io.horizontalsystems.walletkit.chain.bitcoin.LitecoinChainPlugin
 import io.horizontalsystems.walletkit.chain.evm.EvmChainPlugin
@@ -72,6 +73,7 @@ class ChainBehaviorParityTest {
         ChainRegistry.register(ECashChainPlugin())
         ChainRegistry.register(LitecoinChainPlugin())
         ChainRegistry.register(DashChainPlugin())
+        ChainRegistry.register(DogecoinChainPlugin())
         ChainRegistry.register(MoneroChainPlugin(
             { error("Context is not available in unit tests") },
             { error("MoneroNodeManager is not available in unit tests") },
@@ -123,6 +125,11 @@ class ChainBehaviorParityTest {
             BlockchainType.Bitcoin,
             TokenType.Derived(TokenType.Derivation.Bip84)
         ),
+        "BitcoinAddress(Dogecoin)" to AccountType.BitcoinAddress(
+            "addr",
+            BlockchainType.Dogecoin,
+            TokenType.Native,
+        ),
         "MoneroWatchAccount" to AccountType.MoneroWatchAccount("addr", "viewKey", 1L),
         "Passkey" to AccountType.Passkey("credential"),
     )
@@ -153,6 +160,25 @@ class ChainBehaviorParityTest {
         val supportedUids = BlockchainType.supported.map { it.uid }
 
         assertEquals(supportedUids.distinct(), supportedUids)
+    }
+
+    @Test
+    fun `Dogecoin native token and watch account round-trip through persistent ids`() {
+        val query = TokenQuery(BlockchainType.Dogecoin, TokenType.Native)
+        val watchAccount = AccountType.BitcoinAddress(
+            address = "DBXu2kgc3xtvCUWFcxFE3r9hEYgmuaaCyD",
+            blockchainType = BlockchainType.Dogecoin,
+            tokenType = TokenType.Native,
+        )
+
+        assertEquals("dogecoin|native", query.id)
+        assertEquals(query, TokenQuery.fromId(query.id))
+        assertEquals(BlockchainType.Dogecoin, BlockchainType.fromUid("dogecoin"))
+        assertEquals(
+            "DBXu2kgc3xtvCUWFcxFE3r9hEYgmuaaCyD|dogecoin|native",
+            watchAccount.serialized,
+        )
+        assertEquals(watchAccount, AccountType.BitcoinAddress.fromSerialized(watchAccount.serialized))
     }
 
     private fun dump(): String = buildString {

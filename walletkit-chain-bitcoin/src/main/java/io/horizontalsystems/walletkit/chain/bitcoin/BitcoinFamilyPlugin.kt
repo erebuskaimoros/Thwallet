@@ -8,6 +8,7 @@ import io.horizontalsystems.walletkit.core.ISendBitcoinAdapter
 import io.horizontalsystems.walletkit.core.adapters.BitcoinAdapter
 import io.horizontalsystems.walletkit.core.adapters.BitcoinCashAdapter
 import io.horizontalsystems.walletkit.core.adapters.DashAdapter
+import io.horizontalsystems.walletkit.core.adapters.DogecoinAdapter
 import io.horizontalsystems.walletkit.core.adapters.ECashAdapter
 import io.horizontalsystems.walletkit.core.adapters.LitecoinAdapter
 import io.horizontalsystems.walletkit.core.chain.ChainKeyRow
@@ -44,6 +45,7 @@ import io.horizontalsystems.walletkit.modules.transactionInfo.resendbitcoin.Rese
 import io.horizontalsystems.bitcoincash.MainNetBitcoinCash
 import io.horizontalsystems.bitcoinkit.MainNet
 import io.horizontalsystems.dashkit.MainNetDash
+import io.horizontalsystems.dogecoinkit.MainNetDogecoin
 import io.horizontalsystems.ecash.MainNetECash
 import io.horizontalsystems.hdwalletkit.HDExtendedKey
 import io.horizontalsystems.hdwalletkit.HDWallet
@@ -79,6 +81,7 @@ abstract class BitcoinFamilyPlugin : ChainPlugin {
             TokenType.Native -> when (blockchainType) {
                 BlockchainType.ECash -> ECashAdapter(wallet, syncMode, App.backgroundManager)
                 BlockchainType.Dash -> DashAdapter(wallet, syncMode, App.backgroundManager)
+                BlockchainType.Dogecoin -> DogecoinAdapter(wallet, syncMode, App.backgroundManager)
                 else -> null
             }
             else -> null
@@ -124,6 +127,7 @@ abstract class BitcoinFamilyPlugin : ChainPlugin {
             BlockchainType.BitcoinCash -> BitcoinCashAdapter.clear(accountId)
             BlockchainType.ECash -> ECashAdapter.clear(accountId)
             BlockchainType.Dash -> DashAdapter.clear(accountId)
+            BlockchainType.Dogecoin -> DogecoinAdapter.clear(accountId)
             BlockchainType.Litecoin -> LitecoinAdapter.clear(accountId)
             else -> Unit
         }
@@ -296,4 +300,16 @@ class DashChainPlugin : BitcoinFamilyPlugin() {
 
     override suspend fun swapDestinationAddress(account: Account, token: Token): String =
         DashAdapter.firstAddress(account.type)
+}
+
+class DogecoinChainPlugin : BitcoinFamilyPlugin() {
+    override val blockchainType: BlockchainType = BlockchainType.Dogecoin
+
+    override fun addressHandlers(): List<IAddressHandler> {
+        val network = MainNetDogecoin()
+        return listOf(AddressHandlerBase58(network, blockchainType))
+    }
+
+    override suspend fun swapDestinationAddress(account: Account, token: Token): String =
+        DogecoinAdapter.firstAddress(account.type)
 }

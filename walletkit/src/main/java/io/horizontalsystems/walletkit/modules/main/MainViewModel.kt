@@ -493,6 +493,7 @@ class MainViewModel(
             || deeplinkString.startsWith("solana:")
             || deeplinkString.startsWith("zcash:")
             || deeplinkString.startsWith("litecoin:")
+            || deeplinkString.startsWith("dogecoin:")
         ) {
             AddressUriParser.addressUri(deeplinkString)?.let { addressUri ->
                 val allowedBlockchainTypes = addressUri.allowedBlockchainTypes

@@ -85,6 +85,10 @@ class WatchAddressService(
                         add(TokenQuery(BlockchainType.Dash, TokenType.Native))
                     }
 
+                    if (BlockchainType.Dogecoin.supports(accountType)) {
+                        add(TokenQuery(BlockchainType.Dogecoin, TokenType.Native))
+                    }
+
                     if (BlockchainType.BitcoinCash.supports(accountType)) {
                         TokenType.AddressType.values().map {
                             add(TokenQuery(BlockchainType.BitcoinCash, TokenType.AddressTyped(it)))

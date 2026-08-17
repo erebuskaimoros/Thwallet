@@ -16,6 +16,7 @@ object WatchAddressModule {
         add(BlockchainType.BitcoinCash)
         add(BlockchainType.Litecoin)
         add(BlockchainType.Dash)
+        add(BlockchainType.Dogecoin)
         add(BlockchainType.ECash)
         add(BlockchainType.Stellar)
         add(BlockchainType.Monero)

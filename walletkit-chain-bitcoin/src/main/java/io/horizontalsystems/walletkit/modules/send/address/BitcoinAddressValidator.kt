@@ -10,6 +10,7 @@ import io.horizontalsystems.bitcoincore.utils.CashAddressConverter
 import io.horizontalsystems.bitcoincore.utils.SegwitAddressConverter
 import io.horizontalsystems.bitcoinkit.MainNet
 import io.horizontalsystems.dashkit.MainNetDash
+import io.horizontalsystems.dogecoinkit.MainNetDogecoin
 import io.horizontalsystems.ecash.MainNetECash
 import io.horizontalsystems.litecoinkit.MainNetLitecoin
 import io.horizontalsystems.marketkit.models.BlockchainType
@@ -35,7 +36,7 @@ class BitcoinAddressValidator(
     companion object {
         // Mirrors each kit's private parseAddress(): the same converters BitcoinCore
         // builds for the network, minus the wallet
-        private fun staticAddressConverter(blockchainType: BlockchainType) = AddressConverterChain().apply {
+        internal fun staticAddressConverter(blockchainType: BlockchainType) = AddressConverterChain().apply {
             when (blockchainType) {
                 BlockchainType.Bitcoin -> {
                     val network = MainNet()
@@ -63,6 +64,11 @@ class BitcoinAddressValidator(
 
                 BlockchainType.Dash -> {
                     val network = MainNetDash()
+                    prependConverter(Base58AddressConverter(network.addressVersion, network.addressScriptVersion))
+                }
+
+                BlockchainType.Dogecoin -> {
+                    val network = MainNetDogecoin()
                     prependConverter(Base58AddressConverter(network.addressVersion, network.addressScriptVersion))
                 }
 
