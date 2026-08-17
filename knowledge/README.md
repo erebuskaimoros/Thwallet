@@ -82,7 +82,7 @@ security review.
 
 Dogecoin is implemented as a native-only chain through the Thwallet-owned
 `bitcoin-kit-android` fork pinned at
-`5252973e174ee622f430b31235c21634975f2c1c`. This immutable fork commit adds
+`42d8991111fc7336bc05a31cbbdb0ebfd1280f73`. This immutable fork commit adds
 native DOGE consensus, persistence, signing, and transport support. Wallet
 derivation uses BIP44 coin type 3 and P2PKH receive/change addresses. A valid
 Dogecoin P2SH address is accepted
@@ -117,6 +117,12 @@ payload lengths before allocation. Transaction policy also enforces a hard
 100,000-koinu hard dust floor, and a 1,000,000-koinu soft dust threshold.
 Ambiguous API or peer broadcast outcomes do not invalidate the local
 transaction or release its inputs, and retry loops are bounded.
+
+UTXO selection uses checked, fail-closed arithmetic for input aggregation,
+value and fee calculations, transaction-size and change-size fee products,
+and remainder calculations. Dust equality is spendable, while change dust is
+evaluated against the actual change script type, including change returned to
+the first input's script type.
 
 Direct THORChain DOGE swaps preserve Thwallet's zero-wallet-affiliate policy:
 the quote request omits both affiliate fields. They are not cost-free; normal
