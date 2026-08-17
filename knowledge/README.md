@@ -66,17 +66,20 @@ changes.
 
 EthereumKit's chain model is a closed enum used by signing and transaction
 assembly, so the build pins the Thwallet-owned `ethereum-kit-android` fork at
-`56bd013fcdbd93762f73edc152c347da5d12ff7e`. The fork adds the six chain IDs,
-RPC-only history support, and Mantle's additional L1-data/operator fee model.
-The app supplies its own RPC and history-provider configuration.
+`6790cb77328403ca52e932f5fa0a9f3509f9054f`. The fork adds the six chain IDs,
+RPC-only history support, Mantle's additional L1-data/operator fee model, and
+receipt reconciliation for locally submitted RPC-only transactions. The app
+supplies its own RPC and history-provider configuration.
 
 All six networks support EVM derivation, balances, native and EIP-20 wallets,
 send/receive, WalletConnect chain recognition, and explorer links. Cronos is
 currently RPC-only because its current explorer API requires credentials, so
-incoming indexed history is unavailable there. Indexed history and swap routes
-on every new network still depend on the configured third-party provider or
-swap backend advertising that chain. This expansion is not by itself a release
-security review.
+incoming indexed history is unavailable there. Locally submitted Cronos
+transactions are polled by hash and promoted from pending when a receipt is
+mined; unknown or dropped hashes deliberately remain pending rather than being
+guessed failed. Indexed history and swap routes on every new network still
+depend on the configured third-party provider or swap backend advertising that
+chain. This expansion is not by itself a release security review.
 
 ## Native Dogecoin implementation
 
