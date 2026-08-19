@@ -190,6 +190,16 @@ class WatchAddressViewModel(
             emitState()
             return
         }
+        if (parsedType == Type.XrpAddress &&
+            ChainRegistry[BlockchainType.Ripple]?.watchAccountType(address) == null
+        ) {
+            this.address = null
+            type = Type.Unsupported
+            inputState = DataState.Error(UnsupportedAddress)
+            syncSubmitButtonType()
+            emitState()
+            return
+        }
 
         this.address = address
         if (!accountNameEdited) {
@@ -255,6 +265,7 @@ class WatchAddressViewModel(
             BlockchainType.Tron -> Type.TronAddress
             BlockchainType.Ton -> Type.TonAddress
             BlockchainType.Stellar -> Type.StellarAddress
+            BlockchainType.Ripple -> Type.XrpAddress
             BlockchainType.Monero -> Type.MoneroAddress
             BlockchainType.Zcash,
             BlockchainType.Zano,
@@ -313,6 +324,7 @@ class WatchAddressViewModel(
             Type.BitcoinAddress -> SubmitButtonType.Watch(address != null)
             Type.TonAddress -> SubmitButtonType.Watch(address != null)
             Type.StellarAddress -> SubmitButtonType.Watch(address != null)
+            Type.XrpAddress -> SubmitButtonType.Watch(address != null)
             Type.MoneroAddress -> SubmitButtonType.Watch(address != null && viewKey != null)
             Type.Unsupported -> SubmitButtonType.Watch(false)
         }
@@ -339,6 +351,11 @@ class WatchAddressViewModel(
             AccountType.StellarAddress(it.hex)
         }
 
+        Type.XrpAddress -> address?.let {
+            ChainRegistry[BlockchainType.Ripple]?.watchAccountType(it)
+                ?: throw IllegalStateException("XRP watch accounts are unavailable")
+        }
+
         Type.MoneroAddress -> address?.let {
             AccountType.MoneroWatchAccount(it.hex, viewKey!!, birthdayHeight ?: 1)
         }
@@ -354,6 +371,7 @@ class WatchAddressViewModel(
         BitcoinAddress,
         TonAddress,
         StellarAddress,
+        XrpAddress,
         MoneroAddress,
         Unsupported
     }

@@ -248,6 +248,7 @@ dependencies {
     implementation(project(":walletkit-chain-stellar"))
     implementation(project(":walletkit-chain-ton"))
     implementation(project(":walletkit-chain-thorchain"))
+    implementation(project(":walletkit-chain-xrp"))
     implementation(project(":walletkit-chain-bitcoin"))
     implementation(project(":walletkit-chain-evm"))
     implementation(libs.androidx.splashscreen) // MainActivity installs the splash screen

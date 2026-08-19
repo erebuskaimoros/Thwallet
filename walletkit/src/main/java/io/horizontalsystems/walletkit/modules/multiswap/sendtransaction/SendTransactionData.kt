@@ -7,6 +7,16 @@ import org.json.JSONObject
 import java.math.BigDecimal
 
 sealed class SendTransactionData {
+    data class Xrp(
+        val address: String,
+        val amount: BigDecimal,
+        val destinationTag: UInt?,
+        val memo: String?,
+        val recommendedFeeDrops: Long?,
+        val minimumSendAmountDrops: Long?,
+        val validUntilEpochSeconds: Long? = null,
+    ) : SendTransactionData()
+
     data class Evm(
         val transactionData: EvmTransactionData,
         val gasLimit: Long?,

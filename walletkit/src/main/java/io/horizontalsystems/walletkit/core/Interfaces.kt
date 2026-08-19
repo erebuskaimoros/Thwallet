@@ -409,6 +409,48 @@ interface ISendStellarAdapter {
     suspend fun send(transactionEnvelope: String)
 }
 
+data class XrpSendInfo(
+    val normalizedAddress: String,
+    val destinationTag: UInt?,
+    val fee: BigDecimal,
+    val minimumAmount: BigDecimal,
+    val maxSendableBalance: BigDecimal,
+)
+
+data class XrpSubmissionStatus(
+    val transactionHash: String,
+    val state: String,
+    val result: String?,
+    val requiresAcknowledgement: Boolean,
+)
+
+interface ISendXrpAdapter {
+    val maxSendableBalance: BigDecimal
+    val fee: BigDecimal
+    val canSend: Boolean
+    val terminalSubmissionFlow: Flow<XrpSubmissionStatus?>
+
+    suspend fun sendInfo(
+        address: String,
+        destinationTag: UInt?,
+        recommendedFeeDrops: Long? = null,
+        minimumSendAmountDrops: Long? = null,
+    ): XrpSendInfo
+
+    suspend fun send(
+        amount: BigDecimal,
+        address: String,
+        destinationTag: UInt?,
+        memo: String?,
+        recommendedFeeDrops: Long? = null,
+        minimumSendAmountDrops: Long? = null,
+        maximumFee: BigDecimal? = null,
+        validUntilEpochSeconds: Long? = null,
+    ): String
+
+    suspend fun acknowledgeTerminalSubmission()
+}
+
 interface ISendThorchainAdapter {
     val availableBalance: BigDecimal
     val runeAvailableBalance: BigDecimal

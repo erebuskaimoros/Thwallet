@@ -280,7 +280,8 @@ class USwapProvider(
                     }
                 }
 
-                BlockchainType.Monero -> {
+                BlockchainType.Monero,
+                BlockchainType.Ripple -> {
                     App.marketKit.token(TokenQuery(blockchainType, TokenType.Native))?.let {
                         assetsMap[it] = token.identifier
                     }

@@ -28,6 +28,7 @@ import io.horizontalsystems.walletkit.core.adapters.NoTrustlineError
 import io.horizontalsystems.walletkit.core.address.AddressCheckResult
 import io.horizontalsystems.walletkit.core.address.AddressCheckType
 import io.horizontalsystems.walletkit.entities.Address
+import io.horizontalsystems.walletkit.entities.AddressUri
 import io.horizontalsystems.walletkit.modules.address.AddressParserModule
 import io.horizontalsystems.walletkit.modules.address.AddressParserViewModel
 import io.horizontalsystems.walletkit.modules.evmfee.ButtonsGroupWithShade
@@ -69,7 +70,7 @@ fun EnterAddressScreen(
     buttonTitleEmpty: String? = null,
     allowOwnAddress: Boolean = false,
     zcashTransparentOnly: Boolean = false,
-    onResult: (address: Address?, risky: Boolean) -> Unit
+    onResult: (address: Address?, risky: Boolean, paymentUri: AddressUri?) -> Unit
 ) {
     val viewModel = viewModel<EnterAddressViewModel>(
         factory = EnterAddressViewModel.Factory(
@@ -153,7 +154,7 @@ fun EnterAddressScreen(
                         else -> buttonTitle
                     },
                     onClick = {
-                        onResult.invoke(uiState.address, uiState.risky)
+                        onResult.invoke(uiState.address, uiState.risky, paymentAddressViewModel.paymentUri)
                     },
                     enabled = uiState.canBeSendToAddress
                 )

@@ -38,6 +38,7 @@ data class SendTokenSelectPage(val input: Input? = null) : HSPage() {
                         address = input?.address,
                         amount = amount,
                         memo = input?.memo,
+                        destinationTag = input?.destinationTag,
                     ))
                 )
             },
@@ -51,6 +52,7 @@ data class SendTokenSelectPage(val input: Input? = null) : HSPage() {
         val tokenTypes: List<TokenType>?,
         val address: String,
         val amount: AddressUri.Amount?,
-        val memo: String?
+        val memo: String?,
+        val destinationTag: UInt? = null,
     )
 }

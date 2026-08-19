@@ -34,6 +34,7 @@ data class SendPage(val input: Input) : HSPage() {
         val hideAddress = input.hideAddress
         val amount = input.amount
         val memo = input.memo
+        val destinationTag = input.destinationTag
 
         val amountInputModeViewModel = viewModel<AmountInputModeViewModel>(
             factory = AmountInputModeModule.Factory(wallet.coin.uid)
@@ -73,6 +74,7 @@ data class SendPage(val input: Input) : HSPage() {
                         address = address,
                         amount = amount,
                         memo = memo,
+                        destinationTag = destinationTag,
                         hideAddress = hideAddress,
                         riskyAddress = riskyAddress,
                     )
@@ -91,5 +93,6 @@ data class SendPage(val input: Input) : HSPage() {
         @Serializable(with = BigDecimalSerializer::class) val amount: BigDecimal? = null,
         val hideAddress: Boolean = false,
         val memo: String? = null,
+        val destinationTag: UInt? = null,
     )
 }

@@ -140,6 +140,7 @@ class AddressHandlerUdn(
             BlockchainType.Tron -> "TRX"
             BlockchainType.Ton -> "TON"
             BlockchainType.Stellar -> "XLM"
+            BlockchainType.Ripple -> "XRP"
             BlockchainType.Thorchain -> "RUNE"
             BlockchainType.Mayachain -> "CACAO"
             BlockchainType.Monero -> "XMR"

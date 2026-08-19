@@ -1,6 +1,7 @@
 package io.horizontalsystems.walletkit.modules.multiswap.sendtransaction
 
 abstract class SendTransactionSettings {
+    class Xrp : SendTransactionSettings()
     class Btc : SendTransactionSettings()
     class Tron : SendTransactionSettings()
     class Stellar : SendTransactionSettings()

@@ -27,7 +27,7 @@ data class EnterAddressPage(val input: Input) : HSPage() {
             buttonTitle = stringResource(Button_Next),
             allowNull = false,
             initialAddress = input.address
-        ) { address, risky ->
+        ) { address, risky, paymentUri ->
             address?.let {
                 navigation.slideFromRight(
                     SendPage(Input(
@@ -36,8 +36,9 @@ data class EnterAddressPage(val input: Input) : HSPage() {
                         title = input.title,
                         address = it,
                         riskyAddress = risky,
-                        amount = input.amount,
-                        memo = input.memo,
+                        amount = paymentUri?.amount?.humanReadable(input.wallet.token.decimals) ?: input.amount,
+                        memo = paymentUri?.memo ?: input.memo,
+                        destinationTag = paymentUri?.destinationTag ?: input.destinationTag,
                     ))
                 )
             }
@@ -52,5 +53,6 @@ data class EnterAddressPage(val input: Input) : HSPage() {
         val address: String? = null,
         @Serializable(with = BigDecimalSerializer::class) val amount: BigDecimal? = null,
         val memo: String? = null,
+        val destinationTag: UInt? = null,
     )
 }

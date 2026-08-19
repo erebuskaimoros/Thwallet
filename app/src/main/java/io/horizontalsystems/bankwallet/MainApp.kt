@@ -17,6 +17,7 @@ import io.horizontalsystems.walletkit.chain.thorchain.MayachainChainPlugin
 import io.horizontalsystems.walletkit.chain.thorchain.ThorchainChainPlugin
 import io.horizontalsystems.walletkit.chain.ton.TonChainPlugin
 import io.horizontalsystems.walletkit.chain.zcash.ZcashChainPlugin
+import io.horizontalsystems.walletkit.chain.xrp.XrpChainPlugin
 import io.horizontalsystems.walletkit.core.App
 import io.horizontalsystems.walletkit.core.chain.ChainRegistry
 import io.horizontalsystems.walletkit.core.ILocalStorage
@@ -42,12 +43,14 @@ class MainApp : App() {
         ChainRegistry.register(DashChainPlugin())
         ChainRegistry.register(DogecoinChainPlugin())
         // Registration order defines the tail of BlockchainType.supported:
-        // bitcoin, bitcoinCash, ecash, litecoin, dash, dogecoin, monero, zano, zcash, solana, stellar, ton.
+        // bitcoin, bitcoinCash, ecash, litecoin, dash, dogecoin, monero, zano, zcash, solana,
+        // stellar, XRP, ton, THORChain, MayaChain.
         ChainRegistry.register(MoneroChainPlugin({ App.instance }, { App.moneroNodeManager }))
         ChainRegistry.register(ZanoChainPlugin({ App.zanoNodeManager }, { App.backgroundManager }))
         ChainRegistry.register(ZcashChainPlugin({ App.instance }, { App.zcashEndpointManager }, { App.localStorage }))
         ChainRegistry.register(SolanaChainPlugin({ BuildConfig.SOLANA_ALCHEMY_API_KEY }, { BuildConfig.SOLANA_JUPITER_API_KEY }))
         ChainRegistry.register(StellarChainPlugin())
+        ChainRegistry.register(XrpChainPlugin())
         ChainRegistry.register(TonChainPlugin())
         ChainRegistry.register(ThorchainChainPlugin())
         ChainRegistry.register(MayachainChainPlugin())

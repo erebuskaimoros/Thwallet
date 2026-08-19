@@ -19,7 +19,7 @@ abstract class AbstractSendTransactionService(val hasSettings: Boolean, val hasN
     abstract val sendTransactionSettingsFlow: StateFlow<SendTransactionSettings>
     protected var uuid = UUID.randomUUID().toString()
 
-    private val baseCurrency = App.currencyManager.baseCurrency
+    private val baseCurrency by lazy { App.currencyManager.baseCurrency }
 
     abstract fun start(coroutineScope: CoroutineScope)
     abstract suspend fun setSendTransactionData(data: SendTransactionData)

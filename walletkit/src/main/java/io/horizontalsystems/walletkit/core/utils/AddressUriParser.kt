@@ -5,6 +5,7 @@ import io.horizontalsystems.walletkit.core.IAddressParser
 import io.horizontalsystems.walletkit.core.blockchainTypeFromChainId
 import io.horizontalsystems.walletkit.core.factories.removeScheme
 import io.horizontalsystems.walletkit.core.factories.uriScheme
+import io.horizontalsystems.walletkit.core.chain.ChainRegistry
 import io.horizontalsystems.walletkit.core.supported
 import io.horizontalsystems.walletkit.entities.AddressUri
 import io.horizontalsystems.marketkit.models.BlockchainType
@@ -55,6 +56,19 @@ class AddressUriParser(private val blockchainType: BlockchainType?, private val 
         blockchainType?.uriScheme?.let { blockchainTypeScheme ->
             if (scheme != blockchainTypeScheme) {
                 return AddressUriResult.InvalidBlockchainType
+            }
+        }
+
+        val uriBlockchainType = blockchainType
+            ?: BlockchainType.supported.firstOrNull { it.uriScheme == scheme }
+        uriBlockchainType?.let(ChainRegistry::get)?.let { plugin ->
+            if (plugin.hasStrictAddressUriParser) {
+                val strictUri = try {
+                    plugin.parseAddressUri(addressUri)
+                } catch (_: IllegalArgumentException) {
+                    null
+                } ?: return AddressUriResult.WrongUri
+                return AddressUriResult.Uri(strictUri)
             }
         }
 

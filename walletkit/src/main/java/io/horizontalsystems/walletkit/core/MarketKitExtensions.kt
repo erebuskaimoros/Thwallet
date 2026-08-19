@@ -94,6 +94,7 @@ val TokenQuery.isSupported: Boolean
         BlockchainType.ECash,
         BlockchainType.Dash,
         BlockchainType.Dogecoin,
+        BlockchainType.Ripple,
         BlockchainType.Zcash -> {
             tokenType is TokenType.Native
         }
@@ -145,6 +146,7 @@ val Blockchain.description: String
         BlockchainType.Litecoin -> "LTC (BIP44, BIP49, BIP84, BIP86)"
         BlockchainType.Dash -> "DASH"
         BlockchainType.Dogecoin -> "DOGE"
+        BlockchainType.Ripple -> "XRP"
         BlockchainType.Ethereum -> "ETH, ERC20 tokens"
         BlockchainType.BinanceSmartChain -> "BNB, BEP20 tokens"
         BlockchainType.Polygon -> "MATIC, ERC20 tokens"
@@ -203,6 +205,7 @@ private val blockchainOrderMap: Map<BlockchainType, Int> by lazy {
         BlockchainType.Polygon,
         BlockchainType.ArbitrumOne,
         BlockchainType.Optimism,
+        BlockchainType.Ripple,
         BlockchainType.Stellar,
         BlockchainType.Thorchain,
         BlockchainType.Mayachain,
@@ -284,6 +287,7 @@ val BlockchainType.title: String
     BlockchainType.Tron -> "Tron"
     BlockchainType.Ton -> "Ton"
     BlockchainType.Stellar -> "Stellar"
+    BlockchainType.Ripple -> "XRP Ledger"
     BlockchainType.Thorchain -> "THORChain"
     BlockchainType.Mayachain -> "MayaChain"
     BlockchainType.Monero -> "Monero"
@@ -362,6 +366,7 @@ val BlockchainType.isEvm: Boolean
         BlockchainType.Litecoin,
         BlockchainType.Solana,
         BlockchainType.Stellar,
+        BlockchainType.Ripple,
         BlockchainType.Thorchain,
         BlockchainType.Mayachain,
         BlockchainType.Ton,
@@ -402,6 +407,7 @@ fun BlockchainType.supports(accountType: AccountType): Boolean {
                 BlockchainType.Polygon,
                 BlockchainType.Solana,
                 BlockchainType.Stellar,
+                BlockchainType.Ripple,
                 BlockchainType.Thorchain,
                 BlockchainType.Mayachain,
                 BlockchainType.Ton,
@@ -465,6 +471,9 @@ fun BlockchainType.supports(accountType: AccountType): Boolean {
 
         is AccountType.StellarAddress ->
             this == BlockchainType.Stellar
+
+        is AccountType.XrpAddress ->
+            this == BlockchainType.Ripple
 
         is AccountType.StellarSecretKey ->
             this == BlockchainType.Stellar
@@ -608,7 +617,7 @@ val TokenType.AddressType.bitcoinCashCoinType: BitcoinCashCoinType
     }
 
 private val noBadgeCoinCodes by lazy {
-    listOf("AVAX", "XLM", "DASH", "DOGE", "ZEC", "XMR", "XEC", "POL", "SOL", "XDAI", "FTM")
+    listOf("AVAX", "XLM", "XRP", "DASH", "DOGE", "ZEC", "XMR", "XEC", "POL", "SOL", "XDAI", "FTM")
 }
 
 val Token.coinCodeWithNetwork: String

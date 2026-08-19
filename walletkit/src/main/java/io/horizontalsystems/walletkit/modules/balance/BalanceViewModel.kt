@@ -388,6 +388,7 @@ class BalanceViewModel(
                 address = uri.address,
                 amount = uri.amount,
                 memo = uri.memo,
+                destinationTag = uri.destinationTag,
             )
             emitState()
         } else {
@@ -473,7 +474,8 @@ data class OpenSendTokenSelect(
     val tokenTypes: List<TokenType>?,
     val address: String,
     val amount: AddressUri.Amount? = null,
-    val memo: String? = null
+    val memo: String? = null,
+    val destinationTag: UInt? = null,
 )
 
 data class TotalUIState(

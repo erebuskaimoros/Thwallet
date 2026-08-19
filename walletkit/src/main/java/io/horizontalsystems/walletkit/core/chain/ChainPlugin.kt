@@ -14,6 +14,7 @@ import io.horizontalsystems.walletkit.entities.AccountType
 import io.horizontalsystems.walletkit.entities.Wallet
 import androidx.compose.runtime.Composable
 import io.horizontalsystems.walletkit.entities.Address
+import io.horizontalsystems.walletkit.entities.AddressUri
 import io.horizontalsystems.walletkit.modules.address.IAddressHandler
 import io.horizontalsystems.walletkit.modules.amount.AmountInputModeViewModel
 import io.horizontalsystems.walletkit.modules.blockchainsettings.BlockchainSettingsModule
@@ -56,6 +57,18 @@ interface ChainPlugin {
 
     /** Handlers recognizing this chain's plain address formats. */
     fun addressHandlers(): List<IAddressHandler> = emptyList()
+
+    /** Enables a chain-owned fail-closed parser for payment URI routing metadata. */
+    val hasStrictAddressUriParser: Boolean get() = false
+
+    /** Returns null for a malformed URI when [hasStrictAddressUriParser] is true. */
+    fun parseAddressUri(value: String): AddressUri? = null
+
+    /**
+     * Converts a parsed chain address into a persistable watch-account type. Chains whose
+     * payment addresses contain routing metadata should normalize it here before storage.
+     */
+    fun watchAccountType(address: Address): AccountType? = null
 
     /** Handlers resolving this chain's naming/alias systems to addresses. */
     fun domainAddressHandlers(): List<IAddressHandler> = emptyList()
@@ -276,6 +289,7 @@ class ChainSendScreenArgs(
     val address: Address,
     val amount: BigDecimal?,
     val memo: String?,
+    val destinationTag: UInt?,
     val hideAddress: Boolean,
     val riskyAddress: Boolean,
 )

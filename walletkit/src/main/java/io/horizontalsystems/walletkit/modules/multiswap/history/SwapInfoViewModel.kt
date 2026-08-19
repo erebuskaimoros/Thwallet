@@ -208,6 +208,7 @@ class SwapInfoViewModel(
             BlockchainType.Tron -> "https://tronscan.io/#/transaction/$txHash"
             BlockchainType.Ton -> "https://tonviewer.com/transaction/$txHash"
             BlockchainType.Stellar -> "https://stellar.expert/explorer/public/tx/$txHash"
+            BlockchainType.Ripple -> "https://xrpscan.com/tx/$txHash"
             BlockchainType.Thorchain -> "https://runescan.io/tx/$txHash"
             BlockchainType.Mayachain -> "https://www.mayascan.org/tx/$txHash"
             BlockchainType.Zano -> "https://explorer.zano.org/transaction/$txHash"

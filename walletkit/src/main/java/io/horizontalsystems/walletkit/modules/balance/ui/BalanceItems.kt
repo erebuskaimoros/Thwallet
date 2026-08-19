@@ -486,6 +486,7 @@ fun BalanceItems(
                 openSend.address,
                 openSend.amount,
                 openSend.memo,
+                openSend.destinationTag,
             ))
         )
         viewModel.onSendOpened()

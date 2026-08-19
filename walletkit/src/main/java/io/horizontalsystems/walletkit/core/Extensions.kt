@@ -174,6 +174,8 @@ val BlockchainType.blockTime : Long?
         BlockchainType.Ton,
             -> 5
 
+        BlockchainType.Ripple -> 4
+
         BlockchainType.Bitcoin,
         BlockchainType.BitcoinCash,
         BlockchainType.ECash,

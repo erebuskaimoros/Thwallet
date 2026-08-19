@@ -494,6 +494,7 @@ class MainViewModel(
             || deeplinkString.startsWith("zcash:")
             || deeplinkString.startsWith("litecoin:")
             || deeplinkString.startsWith("dogecoin:")
+            || deeplinkString.startsWith("xrpl:")
         ) {
             AddressUriParser.addressUri(deeplinkString)?.let { addressUri ->
                 val allowedBlockchainTypes = addressUri.allowedBlockchainTypes
@@ -508,7 +509,9 @@ class MainViewModel(
                     blockchainTypes = allowedBlockchainTypes,
                     tokenTypes = allowedTokenTypes,
                     address = addressUri.address,
-                    amount = addressUri.amount
+                    amount = addressUri.amount,
+                    memo = addressUri.memo,
+                    destinationTag = addressUri.destinationTag,
                 )
                 emitState()
                 return

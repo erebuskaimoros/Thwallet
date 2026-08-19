@@ -33,7 +33,12 @@ class AddressUri(
             ?: (value<BigDecimal>(Field.Amount) ?: value<BigDecimal>(Field.TxAmount))?.let { Amount.Decimals(it) }
 
     val memo: String?
-        get() = value(Field.TxDescription)
+        get() = value(Field.Memo) ?: value(Field.TxDescription)
+
+    val destinationTag: UInt?
+        get() = parameters[Field.DestinationTag]?.toULongOrNull()?.takeIf {
+            it <= UInt.MAX_VALUE.toULong()
+        }?.toUInt()
 
     // The `value` field carries base units (wei, satoshi, lamports) — the token must be known
     // before it can be rendered, so conversion is deferred to where decimals are available.
@@ -59,6 +64,8 @@ class AddressUri(
         TxDescription("tx_description"),
         Label("label"),
         Message("message"),
+        Memo("memo"),
+        DestinationTag("dt"),
         BlockchainUid("blockchain_uid"),
         TokenUid("token_uid");
 
@@ -95,4 +102,3 @@ class AddressUri(
             return null
         }
 }
-

@@ -74,6 +74,12 @@ class WatchAddressService(
                     }
                 }
 
+                is AccountType.XrpAddress -> {
+                    if (BlockchainType.Ripple.supports(accountType)) {
+                        add(TokenQuery(BlockchainType.Ripple, TokenType.Native))
+                    }
+                }
+
                 is AccountType.HdExtendedKey -> {
                     if (BlockchainType.Bitcoin.supports(accountType)) {
                         accountType.hdExtendedKey.purposes.forEach { purpose ->

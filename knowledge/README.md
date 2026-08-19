@@ -149,6 +149,30 @@ establish reproducible builds; and obtain an independent security review of
 derivation, parsing, consensus validation, transaction construction, signing,
 and broadcasting.
 
+## Native XRP Ledger implementation
+
+Android and iOS now share a deliberately narrow native-XRP contract: secp256k1
+BIP-44 coin type 144, one standard account, classic and mainnet X-addresses,
+full UInt32 DestinationTag semantics (including tag zero), native Payments,
+dynamic reserve and fee checks, validated-ledger history, and crash-safe
+reliable submission. The persistence identity is `ripple|native` with six
+decimals; the unrelated CoinGecko `xrp` platform UID must not be substituted.
+
+The transaction boundary is typed and commitment-checked. Issued currencies,
+partial/path payments, trust lines, NFTs, DEX orders, tickets, multisign,
+account configuration, arbitrary JSON, WalletConnect, OpenCryptoPay, and uSwap
+XRP execution are intentionally excluded. Direct THORChain XRP swaps continue
+the null/null affiliate policy and additionally validate `drop` gas units,
+bounded fee and dust values, the current unhalted/routerless inbound, the
+canonical output asset, exact destination with no injected refund, the
+slippage-derived trade target, rapid-streaming quantity, and the absence of
+affiliate or aggregator memo fields before signing.
+
+The platform implementations use independently maintained narrow codecs and a
+shared public golden fixture for derivation, address encoding, signing
+preimages, strict DER signatures, signed blobs, and transaction hashes. See
+`docs/XRP.md` for the full support boundary and funded-mainnet release gates.
+
 ## August 2026 synchronization baseline
 
 Thwallet merged upstream `master` through `1f50b1fb8`. Debug assembly and the

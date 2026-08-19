@@ -228,6 +228,7 @@ private fun MainScreen(
                 openSend.address,
                 openSend.amount,
                 openSend.memo,
+                openSend.destinationTag,
             ))
         )
         viewModel.onSendOpened()

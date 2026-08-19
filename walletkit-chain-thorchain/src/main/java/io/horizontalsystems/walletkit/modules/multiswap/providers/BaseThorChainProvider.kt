@@ -60,30 +60,16 @@ abstract class BaseThorChainProvider(
 
     companion object {
         // bump to invalidate cached asset maps when the mapping logic changes
-        private const val ASSETS_MAP_VERSION = 5
+        private const val ASSETS_MAP_VERSION = 6
         // Preserves THORChain's live DOGE rate (750k) while bounding downstream size × rate arithmetic.
         private const val MAX_UTXO_GAS_RATE = 1_000_000
         // Ten times the live DOGE threshold (1 DOGE), with ample room for other UTXO chains.
         private const val MAX_UTXO_DUST_THRESHOLD = 1_000_000_000
+        private const val MAX_XRP_FEE_DROPS = 100_000L
     }
 
     protected val thornodeAPI =
         APIClient.retrofit(baseUrl, 60).create(ThornodeAPI::class.java)
-
-    private val blockchainTypes = mapOf(
-        "ARB" to BlockchainType.ArbitrumOne,
-        "AVAX" to BlockchainType.Avalanche,
-        "BCH" to BlockchainType.BitcoinCash,
-        "BSC" to BlockchainType.BinanceSmartChain,
-        "BTC" to BlockchainType.Bitcoin,
-        "ETH" to BlockchainType.Ethereum,
-        "LTC" to BlockchainType.Litecoin,
-        "DOGE" to BlockchainType.Dogecoin,
-        "BASE" to BlockchainType.Base,
-        "DASH" to BlockchainType.Dash,
-        "ZEC" to BlockchainType.Zcash,
-        "THOR" to BlockchainType.Thorchain,
-    )
 
     private var assetsMap = mapOf<Token, String>()
 
@@ -103,7 +89,7 @@ abstract class BaseThorChainProvider(
         val pools = thornodeAPI.pools().filter { it.status.lowercase() == "available" }
         for (pool in pools) {
             val (assetBlockchainId, assetId) = pool.asset.split(".")
-            val blockchainType = blockchainTypes[assetBlockchainId] ?: continue
+            val blockchainType = thorChainBlockchainType(assetBlockchainId) ?: continue
 
             when (blockchainType) {
                 BlockchainType.ArbitrumOne,
@@ -130,7 +116,8 @@ abstract class BaseThorChainProvider(
                 BlockchainType.Litecoin,
                 BlockchainType.Dogecoin,
                 BlockchainType.Dash,
-                BlockchainType.Zcash -> {
+                BlockchainType.Zcash,
+                BlockchainType.Ripple -> {
                     var nativeTokenQueries = blockchainType.nativeTokenQueries
 
                     // filter out taproot for ltc
@@ -289,6 +276,25 @@ abstract class BaseThorChainProvider(
         return Math.addExact(dustThreshold, 1)
     }
 
+    private fun validatedXrpFeeDrops(quoteSwap: Response.QuoteSwap): Long {
+        require(quoteSwap.gas_rate_units?.equals("drop", ignoreCase = true) == true) {
+            "Invalid THORChain XRP gas rate units"
+        }
+        val fee = quoteSwap.recommended_gas_rate?.toLongOrNull()
+        require(fee != null && fee in 1..MAX_XRP_FEE_DROPS) {
+            "Invalid THORChain XRP fee"
+        }
+        return fee
+    }
+
+    private fun validatedXrpMinimumSendAmount(quoteSwap: Response.QuoteSwap): Long {
+        val dust = quoteSwap.dust_threshold?.toLongOrNull()
+        require(dust != null && dust in 1..MAX_UTXO_DUST_THRESHOLD.toLong()) {
+            "Invalid THORChain XRP dust threshold"
+        }
+        return Math.addExact(dust, 1L)
+    }
+
     protected open suspend fun resolveDestinationAddress(tokenOut: Token): String {
         return SwapHelper.getReceiveAddressForToken(tokenOut)
     }
@@ -310,7 +316,27 @@ abstract class BaseThorChainProvider(
         slippage: BigDecimal,
     ): SwapFinalQuote {
         val destination = recipient?.hex ?: resolveDestinationAddress(tokenOut)
-        val quoteSwap = quoteSwap(tokenIn, tokenOut, amountIn, slippage, destination, getRefundAddress(tokenIn), getFromAddress(tokenIn))
+        val refundAddress = getRefundAddress(tokenIn)
+        val quoteSwap = quoteSwap(tokenIn, tokenOut, amountIn, slippage, destination, refundAddress, getFromAddress(tokenIn))
+        if (tokenIn.blockchainType == BlockchainType.Ripple) {
+            val pools = thornodeAPI.pools().filter { it.status.equals("available", ignoreCase = true) }
+            validatedThorXrpInbound(
+                quote = quoteSwap,
+                inboundAddresses = thornodeAPI.inboundAddresses(),
+                nowEpochSeconds = Date().time / 1_000,
+            )
+            validatedThorXrpSwapCommitment(
+                quote = quoteSwap,
+                expectedAsset = checkNotNull(assetsMap[tokenOut]),
+                availablePoolAssets = pools.map { it.asset },
+                expectedDestination = destination,
+                expectedRefundAddress = refundAddress,
+                approvedSlippageBps = slippage.movePointRight(2).longValueExact(),
+                requestedStreamingInterval = streamingInterval,
+            )
+        } else {
+            validatedThorSwapMemoDestination(quoteSwap.memo, destination)
+        }
 
         val amountOut = quoteSwap.expected_amount_out.movePointLeft(protocolDecimals(tokenOut))
 
@@ -454,9 +480,216 @@ abstract class BaseThorChainProvider(
                 )
             }
 
+            BlockchainType.Ripple -> SendTransactionData.Xrp(
+                address = inboundAddress,
+                amount = amountIn,
+                destinationTag = null,
+                memo = memo,
+                recommendedFeeDrops = validatedXrpFeeDrops(quoteSwap),
+                minimumSendAmountDrops = validatedXrpMinimumSendAmount(quoteSwap),
+                validUntilEpochSeconds = quoteSwap.expiry,
+            )
+
             else -> throw IllegalArgumentException()
         }
     }
+}
+
+internal fun validatedThorSwapMemoDestination(memo: String, expectedDestination: String): String {
+    val components = memo.split(':')
+    require(components.size >= 3) { "Invalid THORChain swap memo" }
+    require(components[0].equals("swap", ignoreCase = true) ||
+            components[0].equals("s", ignoreCase = true) ||
+            components[0] == "=") {
+        "Invalid THORChain swap memo function"
+    }
+
+    // THORChain optionally appends a custom refund address to DESTADDR as DESTADDR/REFUNDADDR.
+    // The output destination remains the first component and must match the address committed by
+    // the user. Non-EVM address formats are case-sensitive, so never lowercase this boundary.
+    val destination = components[2].substringBefore('/')
+    require(destination.isNotEmpty() && destination == expectedDestination) {
+        "THORChain swap memo destination mismatch"
+    }
+    return destination
+}
+
+private val THORCHAIN_ASSET_SHORT_CODES = mapOf(
+    "THOR.RUNE" to "r",
+    "BTC.BTC" to "b",
+    "ETH.ETH" to "e",
+    "GAIA.ATOM" to "g",
+    "DOGE.DOGE" to "d",
+    "LTC.LTC" to "l",
+    "BCH.BCH" to "c",
+    "AVAX.AVAX" to "a",
+    "BSC.BNB" to "s",
+    "BASE.ETH" to "f",
+    "TRON.TRX" to "tr",
+    "XRP.XRP" to "x",
+    "SOL.SOL" to "o",
+    "TAO.TAO" to "ta",
+    "ZEC.ZEC" to "z",
+    "XMR.XMR" to "m",
+    "POL.POL" to "p",
+    "SUI.SUI" to "u",
+    "DOT.DOT" to "do",
+    "ADA.ADA" to "ad",
+)
+
+private data class FuzzyPoolAsset(
+    val full: String,
+    val chain: String,
+    val ticker: String,
+    val address: String,
+)
+
+private fun fuzzyPoolAsset(asset: String): FuzzyPoolAsset? {
+    val chainSeparator = asset.indexOf('.')
+    val addressSeparator = asset.indexOf('-', startIndex = chainSeparator + 1)
+    if (chainSeparator <= 0 || addressSeparator <= chainSeparator + 1 || addressSeparator == asset.lastIndex) {
+        return null
+    }
+    return FuzzyPoolAsset(
+        full = asset,
+        chain = asset.substring(0, chainSeparator),
+        ticker = asset.substring(chainSeparator + 1, addressSeparator),
+        address = asset.substring(addressSeparator + 1),
+    )
+}
+
+private fun expectedThorChainMemoAsset(
+    expectedAsset: String,
+    availablePoolAssets: List<String>,
+): String {
+    THORCHAIN_ASSET_SHORT_CODES[expectedAsset.uppercase()]?.let { return it }
+    val expected = fuzzyPoolAsset(expectedAsset) ?: return expectedAsset
+    require(availablePoolAssets.any { it.equals(expectedAsset, ignoreCase = true) }) {
+        "Expected THORChain output pool is unavailable"
+    }
+
+    val otherAddresses = availablePoolAssets.mapNotNull(::fuzzyPoolAsset)
+        .filter {
+            !it.full.equals(expected.full, ignoreCase = true) &&
+                it.chain.equals(expected.chain, ignoreCase = true) &&
+                it.ticker.equals(expected.ticker, ignoreCase = true)
+        }
+        .map { it.address }
+
+    val prefix = "${expected.chain}.${expected.ticker}"
+    if (otherAddresses.isEmpty()) return prefix
+
+    for (index in expected.address.lastIndex downTo 1) {
+        val suffix = expected.address.substring(index)
+        if (otherAddresses.none { it.endsWith(suffix, ignoreCase = true) }) {
+            return "$prefix-$suffix"
+        }
+    }
+    return expectedAsset
+}
+
+internal fun validatedThorXrpSwapCommitment(
+    quote: Response.QuoteSwap,
+    expectedAsset: String,
+    availablePoolAssets: List<String>,
+    expectedDestination: String,
+    expectedRefundAddress: String?,
+    approvedSlippageBps: Long,
+    requestedStreamingInterval: Long,
+): String {
+    require(approvedSlippageBps in 1..9_999) { "Invalid THORChain liquidity tolerance" }
+    require(requestedStreamingInterval in 0..43_200) { "Invalid THORChain streaming interval" }
+    require(quote.fees.affiliate.compareTo(BigDecimal.ZERO) == 0) {
+        "THORChain XRP quote contains an affiliate fee"
+    }
+    require(quote.fees.asset?.equals(expectedAsset, ignoreCase = true) == true) {
+        "THORChain XRP fee asset mismatch"
+    }
+
+    val components = quote.memo.split(':')
+    require(components.size == 4) { "Invalid THORChain XRP swap memo shape" }
+    require(components[0] == "=") { "Invalid THORChain XRP swap memo function" }
+
+    val expectedMemoAsset = expectedThorChainMemoAsset(expectedAsset, availablePoolAssets)
+    require(
+        components[1].equals(expectedAsset, ignoreCase = true) ||
+            components[1].equals(expectedMemoAsset, ignoreCase = true)
+    ) { "THORChain XRP swap memo asset mismatch" }
+
+    val destinations = components[2].split('/', limit = 2)
+    require(destinations.firstOrNull() == expectedDestination) {
+        "THORChain XRP swap memo destination mismatch"
+    }
+    if (expectedRefundAddress == null) {
+        require(destinations.size == 1) { "Unexpected THORChain XRP refund address" }
+    } else {
+        require(destinations.size == 2 && destinations[1] == expectedRefundAddress) {
+            "THORChain XRP refund address mismatch"
+        }
+    }
+
+    val expectedAmountOut = quote.expected_amount_out.toBigIntegerExact()
+    require(expectedAmountOut.signum() > 0) { "Invalid THORChain expected output" }
+    val expectedLimit = expectedAmountOut
+        .multiply(BigInteger.valueOf(10_000 - approvedSlippageBps))
+        .divide(BigInteger.valueOf(10_000))
+    require(expectedLimit.signum() > 0) { "Invalid THORChain XRP trade target" }
+
+    val maxStreamingQuantity = quote.max_streaming_quantity
+    require(maxStreamingQuantity != null && maxStreamingQuantity in 1..1_000_000) {
+        "Invalid THORChain streaming quantity"
+    }
+    val expectedTradeTarget = when {
+        // Thornode preserves an explicitly requested positive interval and auto quantity as /I/0.
+        requestedStreamingInterval > 0 -> "$expectedLimit/$requestedStreamingInterval/0"
+        // Rapid auto-streaming rewrites quantity only when more than one sub-swap is useful.
+        maxStreamingQuantity > 1 -> "$expectedLimit/0/$maxStreamingQuantity"
+        else -> expectedLimit.toString()
+    }
+    require(components[3] == expectedTradeTarget) {
+        "THORChain XRP trade target or streaming policy mismatch"
+    }
+
+    return expectedDestination
+}
+
+internal fun thorChainBlockchainType(chain: String): BlockchainType? = when (chain) {
+    "ARB" -> BlockchainType.ArbitrumOne
+    "AVAX" -> BlockchainType.Avalanche
+    "BASE" -> BlockchainType.Base
+    "BCH" -> BlockchainType.BitcoinCash
+    "BSC" -> BlockchainType.BinanceSmartChain
+    "BTC" -> BlockchainType.Bitcoin
+    "DASH" -> BlockchainType.Dash
+    "DOGE" -> BlockchainType.Dogecoin
+    "ETH" -> BlockchainType.Ethereum
+    "LTC" -> BlockchainType.Litecoin
+    "THOR" -> BlockchainType.Thorchain
+    "XRP" -> BlockchainType.Ripple
+    "ZEC" -> BlockchainType.Zcash
+    else -> null
+}
+
+internal fun validatedThorXrpInbound(
+    quote: Response.QuoteSwap,
+    inboundAddresses: List<Response.InboundAddress>,
+    nowEpochSeconds: Long,
+): String {
+    val current = inboundAddresses.singleOrNull { it.chain.equals("XRP", ignoreCase = true) }
+        ?: throw IllegalArgumentException("Missing unique THORChain XRP inbound")
+    require(!current.halted) { "THORChain XRP inbound is halted" }
+    require(quote.router == null && current.router == null) { "THORChain XRP quote must not use a router" }
+    require(quote.expiry > Math.addExact(nowEpochSeconds, 30)) { "THORChain XRP quote is expired" }
+    require(quote.inbound_address == current.address) { "THORChain XRP inbound address mismatch" }
+    val quotedFee = quote.recommended_gas_rate?.toLongOrNull()
+    val currentFee = current.gas_rate.toLongOrNull()
+    require(quotedFee != null && currentFee != null && quotedFee == currentFee) {
+        "THORChain XRP fee mismatch"
+    }
+    require(current.dust_threshold != null && quote.dust_threshold == current.dust_threshold) {
+        "THORChain XRP dust threshold mismatch"
+    }
+    return current.address
 }
 
 interface ThornodeAPI {
@@ -516,6 +749,7 @@ interface ThornodeAPI {
             val gas_rate_units: String?,
             val memo: String,
             val expected_amount_out: BigDecimal,
+            val max_streaming_quantity: Long? = null,
 //  "expected_amount_out_streaming": "2035299208",
 //  "max_streaming_quantity": 8,
 //  "streaming_swap_blocks": 7,
@@ -523,6 +757,7 @@ interface ThornodeAPI {
             val total_swap_seconds: Long?,
         ) {
             data class Fees(
+                val asset: String? = null,
                 val affiliate: BigDecimal,
                 val outbound: BigDecimal,
                 val liquidity: BigDecimal,
