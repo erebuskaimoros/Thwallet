@@ -31,7 +31,7 @@ sealed class TransactionInfoViewItem {
         val badge: String?,
     ) : TransactionInfoViewItem()
 
-    class Value(val title: String, val value: String) : TransactionInfoViewItem()
+    class Value(val title: String, val value: String, val copyable: Boolean = false) : TransactionInfoViewItem()
 
     class PriceWithToggle(val title: String, val valueOne: String, val valueTwo: String) : TransactionInfoViewItem()
 
@@ -43,7 +43,8 @@ sealed class TransactionInfoViewItem {
 
     class Explorer(val title: String, val url: String?) : TransactionInfoViewItem()
 
-    class Status(val status: TransactionStatus) : TransactionInfoViewItem()
+    /** [notProcessed]: failed without reaching the chain, which is not an error to show as one. */
+    class Status(val status: TransactionStatus, val notProcessed: Boolean = false) : TransactionInfoViewItem()
 
     object RawTransaction : TransactionInfoViewItem()
 

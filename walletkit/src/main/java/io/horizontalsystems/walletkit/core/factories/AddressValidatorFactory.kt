@@ -1,12 +1,8 @@
 package io.horizontalsystems.walletkit.core.factories
 
-import io.horizontalsystems.walletkit.core.App
 import io.horizontalsystems.walletkit.core.chain.ChainRegistry
 import io.horizontalsystems.walletkit.core.isEvm
 import io.horizontalsystems.walletkit.modules.send.address.EnterAddressValidator
-import io.horizontalsystems.walletkit.modules.send.address.EvmAddressValidator
-import io.horizontalsystems.walletkit.modules.send.address.TronAddressValidator
-import io.horizontalsystems.marketkit.models.BlockchainType
 import io.horizontalsystems.marketkit.models.Token
 
 object AddressValidatorFactory {
@@ -19,22 +15,8 @@ object AddressValidatorFactory {
         token: Token,
         allowOwnAddress: Boolean = false,
         zcashTransparentOnly: Boolean = false,
-    ): EnterAddressValidator {
-        ChainRegistry[token.blockchainType]?.addressValidator(token, allowOwnAddress, zcashTransparentOnly)?.let {
-            return it
-        }
-
-        if (token.blockchainType.isEvm) {
-            return EvmAddressValidator()
-        }
-
-        return when (token.blockchainType) {
-            BlockchainType.Tron -> {
-                TronAddressValidator(token, App.adapterManager, allowOwnAddress)
-            }
-
-            else -> throw IllegalStateException("Unsupported blockchain type: ${token.blockchainType}")
-        }
-    }
+    ): EnterAddressValidator =
+        ChainRegistry[token.blockchainType]?.addressValidator(token, allowOwnAddress, zcashTransparentOnly)
+            ?: throw IllegalStateException("Unsupported blockchain type: ${token.blockchainType}")
 
 }

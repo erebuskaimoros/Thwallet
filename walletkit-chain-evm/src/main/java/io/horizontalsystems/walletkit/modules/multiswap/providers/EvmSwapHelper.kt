@@ -11,7 +11,6 @@ import io.horizontalsystems.ethereumkit.models.DefaultBlockParameter
 import io.horizontalsystems.marketkit.models.BlockchainType
 import io.horizontalsystems.marketkit.models.Token
 import io.horizontalsystems.marketkit.models.TokenType
-import kotlinx.coroutines.rx2.await
 import java.math.BigDecimal
 
 object EvmSwapHelper {
@@ -31,7 +30,7 @@ object EvmSwapHelper {
 
         val eip20Adapter = App.adapterManager.getAdapterForToken<Eip20Adapter>(token) ?: return null
 
-        return eip20Adapter.allowance(spenderAddress, DefaultBlockParameter.Latest).await()
+        return eip20Adapter.allowance(spenderAddress, DefaultBlockParameter.Latest)
     }
 
     fun actionApprove(
@@ -85,13 +84,6 @@ object EvmSwapHelper {
         return token.blockchainType is BlockchainType.Ethereum
             && tokenType is TokenType.Eip20
             && tokenType.address.lowercase() == "0xdac17f958d2ee523a2206206994597c13d831ec7"
-    }
-
-    fun getAllBridgeProxyFee(proxyAddress: String, amountIn: BigDecimal): BigDecimal {
-        // need to fetch it from contract
-        val feeBP = 100
-        val feeMultiplier = feeBP.toBigDecimal().movePointLeft(4).stripTrailingZeros()
-        return amountIn * feeMultiplier
     }
 
 }

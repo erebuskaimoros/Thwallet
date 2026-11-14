@@ -8,8 +8,6 @@ import io.horizontalsystems.walletkit.entities.EvmSyncSource
 import io.horizontalsystems.walletkit.entities.EvmSyncSourceRecord
 import io.horizontalsystems.marketkit.models.BlockchainType
 import io.horizontalsystems.walletkit.core.ethereum.EvmNetworkCatalog
-import io.reactivex.Observable
-import io.reactivex.subjects.PublishSubject
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -21,21 +19,28 @@ class EvmSyncSourceManager(
     private val evmSyncSourceStorage: EvmSyncSourceStorage,
 ) {
 
-    private val syncSourceSubject = PublishSubject.create<BlockchainType>()
+    // Each event names a different blockchain whose kit must restart, so a deep
+    // buffer instead of conflation: dropping an event would skip that restart.
+    // 64 matches the Channel.BUFFERED capacity the replaced Rx asFlow() bridge
+    // used, so only the overflow behavior changed (drop oldest vs block, which
+    // could ANR). tryEmit stays non-blocking; sources change one at a time in
+    // practice, so overflow is unreachable.
+    private val _syncSourceFlow = MutableSharedFlow<BlockchainType>(
+        extraBufferCapacity = 64,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val syncSourceFlow = _syncSourceFlow.asSharedFlow()
 
     private val _syncSourcesUpdatedFlow =
         MutableSharedFlow<BlockchainType>(replay = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     val syncSourcesUpdatedFlow = _syncSourcesUpdatedFlow.asSharedFlow()
-
-    val syncSourceObservable: Observable<BlockchainType>
-        get() = syncSourceSubject
 
     fun defaultSyncSources(blockchainType: BlockchainType): List<EvmSyncSource> {
         return when (blockchainType) {
             BlockchainType.Ethereum -> listOf(
                 evmSyncSource(
                     blockchainType,
-                    "BlocksDecoded",
+                    "Unstoppable",
                     listOf(URI(appConfigProvider.blocksDecodedEthereumRpc))
                 ),
                 evmSyncSource(
@@ -81,8 +86,8 @@ class EvmSyncSourceManager(
                 ),
                 evmSyncSource(
                     blockchainType,
-                    "LlamaNodes",
-                    listOf(URI("https://polygon.llamarpc.com"))
+                    "PublicNode",
+                    listOf(URI("https://polygon-bor-rpc.publicnode.com"))
                 )
             )
 
@@ -95,11 +100,16 @@ class EvmSyncSourceManager(
                 evmSyncSource(
                     blockchainType,
                     "PublicNode",
-                    listOf(URI("https://avalanche-evm.publicnode.com"))
+                    listOf(URI("https://avalanche-c-chain-rpc.publicnode.com"))
                 )
             )
 
             BlockchainType.Optimism -> listOf(
+                evmSyncSource(
+                    blockchainType,
+                    "Unstoppable",
+                    listOf(URI("https://optimism-rpc.unstoppable.money"))
+                ),
                 evmSyncSource(
                     blockchainType,
                     "Optimism",
@@ -107,12 +117,17 @@ class EvmSyncSourceManager(
                 ),
                 evmSyncSource(
                     blockchainType,
-                    "Omnia",
-                    listOf(URI("https://endpoints.omniatech.io/v1/op/mainnet/public"))
+                    "PublicNode",
+                    listOf(URI("https://optimism-rpc.publicnode.com"))
                 )
             )
 
             BlockchainType.Base -> listOf(
+                evmSyncSource(
+                    blockchainType,
+                    "Unstoppable",
+                    listOf(URI("https://base-rpc.unstoppable.money"))
+                ),
                 evmSyncSource(
                     blockchainType,
                     "PublicNode",
@@ -135,6 +150,61 @@ class EvmSyncSourceManager(
                     blockchainType,
                     "ZKsync",
                     listOf(URI("https://mainnet.era.zksync.io"))
+                ),
+                evmSyncSource(
+                    blockchainType,
+                    "dRPC",
+                    listOf(URI("https://zksync.drpc.org"))
+                )
+            )
+
+            BlockchainType.RobinhoodChain -> listOf(
+                evmSyncSource(
+                    blockchainType,
+                    "Unstoppable",
+                    listOf(URI("https://robinhood-rpc.unstoppable.money"))
+                ),
+                evmSyncSource(
+                    blockchainType,
+                    "Alchemy",
+                    appConfigProvider.alchemyApiKey.map { URI("https://robinhood-mainnet.g.alchemy.com/v2/$it") },
+                    displayUrl = "https://robinhood-mainnet.g.alchemy.com"
+                ),
+                evmSyncSource(
+                    blockchainType,
+                    "Robinhood Chain",
+                    listOf(URI("https://rpc.mainnet.chain.robinhood.com"))
+                )
+            )
+
+            // The official rpc.mainnet.arc.io (and its QuickNode mirror) sit behind Cloudflare
+            // geo-blocking, so keyless providers reachable everywhere come first.
+            BlockchainType.Arc -> listOf(
+                evmSyncSource(
+                    blockchainType,
+                    "PublicNode",
+                    listOf(URI("https://arc-rpc.publicnode.com"))
+                ),
+                evmSyncSource(
+                    blockchainType,
+                    "dRPC",
+                    listOf(URI("https://arc.drpc.org"), URI("https://rpc.drpc.mainnet.arc.io"))
+                ),
+                evmSyncSource(
+                    blockchainType,
+                    "Blockdaemon",
+                    listOf(URI("https://rpc.blockdaemon.mainnet.arc.io"))
+                ),
+                evmSyncSource(
+                    blockchainType,
+                    "Alchemy",
+                    appConfigProvider.alchemyApiKey.map { URI("https://arc-mainnet.g.alchemy.com/v2/$it") },
+                    displayUrl = "https://arc-mainnet.g.alchemy.com"
+                ),
+                evmSyncSource(
+                    blockchainType,
+                    "Arc",
+                    listOf(URI("https://rpc.mainnet.arc.io"))
                 )
             )
 
@@ -146,8 +216,8 @@ class EvmSyncSourceManager(
                 ),
                 evmSyncSource(
                     blockchainType,
-                    "Omnia",
-                    listOf(URI("https://endpoints.omniatech.io/v1/arbitrum/one/public"))
+                    "PublicNode",
+                    listOf(URI("https://arbitrum-one-rpc.publicnode.com"))
                 )
             )
 
@@ -159,8 +229,8 @@ class EvmSyncSourceManager(
                 ),
                 evmSyncSource(
                     blockchainType,
-                    "Ankr",
-                    listOf(URI("https://rpc.ankr.com/gnosis"))
+                    "dRPC",
+                    listOf(URI("https://gnosis.drpc.org"))
                 )
             )
 
@@ -177,8 +247,8 @@ class EvmSyncSourceManager(
                 ),
                 evmSyncSource(
                     blockchainType,
-                    "Ankr",
-                    listOf(URI("https://rpc.ankr.com/fantom"))
+                    "dRPC",
+                    listOf(URI("https://fantom.drpc.org"))
                 )
             )
 
@@ -222,24 +292,16 @@ class EvmSyncSourceManager(
                 )
             )
 
-            EvmNetworkCatalog.robinhood -> listOf(
-                evmSyncSource(
-                    blockchainType,
-                    "Robinhood Chain",
-                    listOf(URI("https://rpc.mainnet.chain.robinhood.com"))
-                )
-            )
-
             BlockchainType.Tron -> listOf(
                 evmSyncSource(
                     blockchainType,
-                    "TronGrid",
-                    listOf(URI("https://api.trongrid.io/"))
+                    "Unstoppable",
+                    listOf(URI("https://tron-rpc.unstoppable.money/"))
                 ),
                 evmSyncSource(
                     blockchainType,
-                    "Pocket Network",
-                    listOf(URI("https://tron.api.pocket.network"))
+                    "PublicNode",
+                    listOf(URI("https://tron-rpc.publicnode.com/"))
                 )
             )
 
@@ -278,11 +340,13 @@ class EvmSyncSourceManager(
         blockchainType: BlockchainType,
         name: String,
         uris: List<URI>,
+        displayUrl: String? = null,
     ) =
         EvmSyncSource(
             id = "${blockchainType.uid}|${name}|${uris.joinToString(separator = ",") { it.toString() }}",
             name = name,
             uris = uris,
+            displayUrl = displayUrl,
         )
 
     fun allSyncSources(blockchainType: BlockchainType): List<EvmSyncSource> =
@@ -310,7 +374,7 @@ class EvmSyncSourceManager(
 
     fun save(syncSource: EvmSyncSource, blockchainType: BlockchainType) {
         blockchainSettingsStorage.save(syncSource.uri.toString(), blockchainType)
-        syncSourceSubject.onNext(blockchainType)
+        _syncSourceFlow.tryEmit(blockchainType)
     }
 
     fun saveSyncSource(blockchainType: BlockchainType, url: String, auth: String?) {
@@ -335,7 +399,7 @@ class EvmSyncSourceManager(
         evmSyncSourceStorage.delete(blockchainType.uid, syncSource.uri.toString())
 
         if (isCurrent) {
-            syncSourceSubject.onNext(blockchainType)
+            _syncSourceFlow.tryEmit(blockchainType)
         }
 
         _syncSourcesUpdatedFlow.tryEmit(blockchainType)

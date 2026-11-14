@@ -3,6 +3,7 @@ package io.horizontalsystems.walletkit.modules.restoreaccount.restoreblockchains
 import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,6 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -36,6 +38,7 @@ import io.horizontalsystems.walletkit.core.stats.stat
 import io.horizontalsystems.walletkit.helpers.HudHelper
 import io.horizontalsystems.walletkit.modules.enablecoin.blockchaintokens.BlockchainTokensViewModel
 import io.horizontalsystems.walletkit.modules.enablecoin.restoresettings.RestoreSettingsViewModel
+import io.horizontalsystems.walletkit.modules.nav3.HSPage
 import io.horizontalsystems.walletkit.modules.restoreaccount.RestoreViewModel
 import io.horizontalsystems.walletkit.ui.compose.ComposeAppTheme
 import io.horizontalsystems.walletkit.ui.compose.components.CellMultilineClear
@@ -60,6 +63,7 @@ import kotlinx.coroutines.launch
 fun ManageWalletsScreen(
     mainViewModel: RestoreViewModel,
     openBirthdayHeightConfigure: (Token) -> Unit,
+    openAccountPicker: (HSPage) -> Unit,
     onBackClick: () -> Unit,
     onFinish: () -> Unit
 ) {
@@ -110,6 +114,16 @@ fun ManageWalletsScreen(
         openBirthdayHeightConfigure.invoke(token)
 
         stat(page = StatPage.RestoreSelect, event = StatEvent.Open(StatPage.BirthdayInput))
+    }
+
+    mainViewModel.accountPickerResult?.let { result ->
+        restoreSettingsViewModel.onAccountPickerResult(result)
+        mainViewModel.accountPickerResult = null
+    }
+
+    restoreSettingsViewModel.openAccountPicker?.let { page ->
+        restoreSettingsViewModel.accountPickerOpened()
+        openAccountPicker.invoke(page)
     }
 
     LaunchedEffect(restored) {
@@ -179,6 +193,7 @@ fun ManageWalletsScreen(
                                 modifier = Modifier
                                     .padding(end = 16.dp)
                                     .size(32.dp)
+                                    .clip(RoundedCornerShape(8.dp))
                             )
                             Column(modifier = Modifier.weight(1f)) {
                                 body_leah(

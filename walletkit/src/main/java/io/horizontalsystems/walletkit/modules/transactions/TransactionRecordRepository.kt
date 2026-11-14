@@ -1,5 +1,6 @@
 package io.horizontalsystems.walletkit.modules.transactions
 
+import io.horizontalsystems.walletkit.core.collectSafely
 import io.horizontalsystems.walletkit.core.managers.TransactionAdapterManager
 import io.horizontalsystems.walletkit.core.ethereum.EvmNetworkCatalog
 import io.horizontalsystems.walletkit.entities.transactionrecords.TransactionRecord
@@ -7,17 +8,17 @@ import io.horizontalsystems.walletkit.modules.contacts.model.Contact
 import io.horizontalsystems.marketkit.models.Blockchain
 import io.horizontalsystems.marketkit.models.BlockchainType
 import io.horizontalsystems.walletkit.entities.AccountType
-import io.reactivex.Observable
-import io.reactivex.subjects.PublishSubject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.rx2.asFlow
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -31,8 +32,8 @@ class TransactionRecordRepository(
     private var selectedBlockchain: Blockchain? = null
     private var contact: Contact? = null
 
-    private val itemsSubject = PublishSubject.create<List<TransactionRecord>>()
-    override val itemsObservable: Observable<List<TransactionRecord>> get() = itemsSubject
+    private val _itemsFlow = MutableSharedFlow<List<TransactionRecord>>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    override val itemsFlow: Flow<List<TransactionRecord>> get() = _itemsFlow
 
     private var loadedPageNumber = 0
     private val items = CopyOnWriteArrayList<TransactionRecord>()
@@ -100,12 +101,16 @@ class TransactionRecordRepository(
                 BlockchainType.Optimism,
                 BlockchainType.Base,
                 BlockchainType.ZkSync,
+                BlockchainType.RobinhoodChain,
+                BlockchainType.Arc,
                 BlockchainType.ArbitrumOne,
                 BlockchainType.Gnosis,
                 BlockchainType.Fantom,
                 BlockchainType.Solana,
                 BlockchainType.Tron,
                 BlockchainType.Stellar,
+                BlockchainType.Xrp,
+                BlockchainType.Near,
                 BlockchainType.Thorchain,
                 BlockchainType.Mayachain,
                 BlockchainType.Monero,
@@ -218,9 +223,9 @@ class TransactionRecordRepository(
     private fun subscribeForUpdates() {
         updatesJob = coroutineScope.launch {
             activeAdapters
-                .map { it.updatedObservable.asFlow() }
+                .map { it.updatedFlow }
                 .merge()
-                .collect {
+                .collectSafely {
                     handleUpdates()
                 }
         }
@@ -271,7 +276,7 @@ class TransactionRecordRepository(
         loading.set(false)
         allLoaded.set(false)
         selectedWallet = null
-        itemsSubject.onNext(emptyList())
+        _itemsFlow.tryEmit(emptyList())
     }
 
     override fun clear() {
@@ -295,7 +300,7 @@ class TransactionRecordRepository(
 
                 items.clear()
                 items.addAll(it)
-                itemsSubject.onNext(items)
+                _itemsFlow.tryEmit(items)
 
                 loadedPageNumber = page
             }

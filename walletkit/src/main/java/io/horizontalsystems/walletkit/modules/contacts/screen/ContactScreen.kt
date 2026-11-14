@@ -30,6 +30,8 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.dp
 import coil.compose.rememberAsyncImagePainter
 import io.horizontalsystems.walletkit.R
@@ -43,9 +45,6 @@ import io.horizontalsystems.walletkit.modules.contacts.viewmodel.ContactViewMode
 import io.horizontalsystems.walletkit.modules.contacts.viewmodel.ContactViewModel.AddressViewItem
 import io.horizontalsystems.walletkit.ui.compose.ComposeAppTheme
 import io.horizontalsystems.walletkit.ui.compose.TranslatableString
-import io.horizontalsystems.walletkit.ui.compose.components.ButtonPrimaryRed
-import io.horizontalsystems.walletkit.ui.compose.components.ButtonPrimaryTransparent
-import io.horizontalsystems.walletkit.ui.compose.components.ButtonPrimaryYellow
 import io.horizontalsystems.walletkit.ui.compose.components.CellUniversalLawrenceSection
 import io.horizontalsystems.walletkit.ui.compose.components.FormsInput
 import io.horizontalsystems.walletkit.ui.compose.components.MenuItem
@@ -60,6 +59,9 @@ import io.horizontalsystems.walletkit.ui.extensions.BottomSheetHeader
 import io.horizontalsystems.walletkit.uiv3.components.HSScaffold
 import io.horizontalsystems.walletkit.uiv3.components.bottomsheet.BottomSheetContent
 import kotlinx.coroutines.launch
+import io.horizontalsystems.walletkit.uiv3.components.controls.HSButton
+import io.horizontalsystems.walletkit.uiv3.components.controls.ButtonVariant
+import io.horizontalsystems.walletkit.uiv3.components.controls.ButtonStyle
 
 enum class ContactScreenBottomSheetType {
     DeleteConfirmation, DiscardChangesConfirmation
@@ -247,7 +249,8 @@ fun ConfirmationBottomSheet(
 
         when (cautionType) {
             Caution.Type.Error -> {
-                ButtonPrimaryRed(
+                HSButton(
+                    variant = ButtonVariant.Destructive,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 24.dp),
@@ -259,7 +262,7 @@ fun ConfirmationBottomSheet(
             }
 
             Caution.Type.Warning -> {
-                ButtonPrimaryYellow(
+                HSButton(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 24.dp),
@@ -272,7 +275,9 @@ fun ConfirmationBottomSheet(
         }
 
         Spacer(modifier = Modifier.height(12.dp))
-        ButtonPrimaryTransparent(
+        HSButton(
+            variant = ButtonVariant.Secondary,
+            style = ButtonStyle.Transparent,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp),
@@ -363,7 +368,8 @@ private fun ContactAddress(
         Image(
             modifier = Modifier
                 .padding(end = 16.dp)
-                .size(32.dp),
+                .size(32.dp)
+                .clip(RoundedCornerShape(8.dp)),
             painter = rememberAsyncImagePainter(
                 model = addressViewItem.blockchain.type.imageUrl,
                 error = painterResource(R.drawable.ic_platform_placeholder_32)

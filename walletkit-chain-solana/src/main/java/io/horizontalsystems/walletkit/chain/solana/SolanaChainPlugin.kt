@@ -1,8 +1,10 @@
 package io.horizontalsystems.walletkit.chain.solana
 
-import androidx.compose.runtime.Composable
-import androidx.lifecycle.viewmodel.compose.viewModel
 import io.horizontalsystems.walletkit.core.App
+import io.horizontalsystems.walletkit.core.ISendSolanaAdapter
+import io.horizontalsystems.walletkit.core.chain.SendChainSettings
+import io.horizontalsystems.walletkit.modules.multiswap.sendtransaction.SendTransactionData
+import java.math.BigDecimal
 import io.horizontalsystems.walletkit.core.IAdapter
 import io.horizontalsystems.walletkit.core.ITransactionsAdapter
 import io.horizontalsystems.walletkit.core.adapters.SolanaAdapter
@@ -10,7 +12,6 @@ import io.horizontalsystems.walletkit.core.adapters.SolanaTransactionConverter
 import io.horizontalsystems.walletkit.core.adapters.SolanaTransactionsAdapter
 import io.horizontalsystems.walletkit.core.adapters.SplAdapter
 import io.horizontalsystems.walletkit.core.chain.ChainPlugin
-import io.horizontalsystems.walletkit.core.chain.ChainSendScreenArgs
 import io.horizontalsystems.walletkit.core.managers.RestoreSettings
 import io.horizontalsystems.walletkit.core.managers.SolanaKitManager
 import io.horizontalsystems.walletkit.core.managers.SolanaRpcSourceManager
@@ -27,11 +28,10 @@ import io.horizontalsystems.walletkit.modules.multiswap.sendtransaction.Abstract
 import io.horizontalsystems.walletkit.modules.multiswap.sendtransaction.SendTransactionServiceSolana
 import io.horizontalsystems.walletkit.modules.nav3.HSPage
 import io.horizontalsystems.walletkit.modules.send.address.EnterAddressValidator
-import io.horizontalsystems.walletkit.modules.send.solana.SendSolanaModule
-import io.horizontalsystems.walletkit.modules.send.solana.SendSolanaScreen
-import io.horizontalsystems.walletkit.modules.send.solana.SendSolanaViewModel
 import io.horizontalsystems.walletkit.modules.solananetwork.SolanaNetworkPage
 import io.horizontalsystems.walletkit.modules.transactions.TransactionSource
+import io.horizontalsystems.walletkit.modules.walletconnect.handler.IWCHandler
+import io.horizontalsystems.walletkit.modules.walletconnect.solana.WCHandlerSolana
 import io.horizontalsystems.marketkit.models.Blockchain
 import io.horizontalsystems.marketkit.models.BlockchainType
 import io.horizontalsystems.marketkit.models.Token
@@ -44,6 +44,20 @@ class SolanaChainPlugin(
     private val jupiterApiKey: () -> String,
 ) : ChainPlugin {
 
+    // The raw SOL balance overstates what a transfer can carry: the network fee and the
+    // rent-exempt reserve stay behind. The adapter's figure already accounts for both.
+    override fun sendAvailableBalance(token: Token, settings: SendChainSettings?): BigDecimal? =
+        App.adapterManager.getAdapterForToken<ISendSolanaAdapter>(token)?.availableBalance
+
+    override fun sendTransactionData(
+        token: Token,
+        amount: BigDecimal,
+        address: String,
+        memo: String?,
+        extraInput: String?,
+        settings: SendChainSettings?,
+    ) = SendTransactionData.Solana.Simple(address, amount)
+
     override val blockchainType: BlockchainType = BlockchainType.Solana
 
     val rpcSourceManager by lazy {
@@ -53,7 +67,7 @@ class SolanaChainPlugin(
     val kitManager by lazy {
         SolanaKitManager(
             rpcSourceManager,
-            SolanaWalletManager(App.walletManager, App.accountManager, App.marketKit),
+            SolanaWalletManager(App.walletManager, App.accountManager, App.marketKit, App.tokenAutoEnableManager),
             App.backgroundManager,
         )
     }
@@ -114,6 +128,8 @@ class SolanaChainPlugin(
     override fun sendTransactionService(token: Token): AbstractSendTransactionService =
         SendTransactionServiceSolana(token)
 
+    override fun wcHandlers(): List<IWCHandler> = listOf(WCHandlerSolana(kitManager))
+
     override fun addressHandlers(): List<IAddressHandler> = listOf(AddressHandlerSolana())
 
     override fun addressValidator(token: Token): EnterAddressValidator = SolanaAddressValidator()
@@ -125,18 +141,4 @@ class SolanaChainPlugin(
 
     override fun backupSyncSourceName(): String = rpcSourceManager.rpcSource.name
 
-    @Composable
-    override fun SendScreen(args: ChainSendScreenArgs) {
-        val factory = SendSolanaModule.Factory(args.wallet, args.address, args.hideAddress)
-        val sendSolanaViewModel = viewModel<SendSolanaViewModel>(factory = factory)
-        SendSolanaScreen(
-            title = args.title,
-            navigation = args.navigation,
-            viewModel = sendSolanaViewModel,
-            amountInputModeViewModel = args.amountInputModeViewModel,
-            sendEntryPointDestId = args.sendEntryPointDestId,
-            amount = args.amount,
-            riskyAddress = args.riskyAddress,
-        )
-    }
 }

@@ -8,7 +8,6 @@ import io.horizontalsystems.walletkit.core.App
 import io.horizontalsystems.walletkit.core.ViewModelUiState
 import io.horizontalsystems.walletkit.entities.CurrencyValue
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.rx2.asFlow
 import java.math.BigDecimal
 
 class SwapSelectProviderViewModel(
@@ -30,7 +29,6 @@ class SwapSelectProviderViewModel(
     init {
         viewModelScope.launch {
             marketKit.coinPriceObservable("swap-providers", tokenIn.coin.uid, currency.code)
-                .asFlow()
                 .collect {
                     rateTokenIn = it.value
                     quoteViewItems = getViewItems(quotes.sorted())
@@ -39,7 +37,6 @@ class SwapSelectProviderViewModel(
         }
         viewModelScope.launch {
             marketKit.coinPriceObservable("swap-providers", tokenOut.coin.uid, currency.code)
-                .asFlow()
                 .collect {
                     rateTokenOut = it.value
                     quoteViewItems = getViewItems(quotes.sorted())
@@ -57,6 +54,8 @@ class SwapSelectProviderViewModel(
 
     private fun getViewItems(quotes: List<SwapProviderQuote>): List<QuoteViewItem> {
         val fiatAmountIn = getFiatValue(amountIn, rateTokenIn)
+        val allEstimationTimes = quotes.map { it.estimationTime }
+
         return quotes.map { quote ->
             val fiatAmountOut = getFiatValue(quote.amountOut, rateTokenOut)
             val tokenAmount = App.numberFormatter.formatCoinFull(
@@ -75,7 +74,7 @@ class SwapSelectProviderViewModel(
                 tokenAmount = tokenAmount,
                 priceImpactData = priceImpactData,
                 estimationTime = quote.estimationTime,
-                timeStatus = swapTimeStatus(quote.estimationTime, quote.provider.type),
+                timeStatus = swapTimeStatus(quote.estimationTime, allEstimationTimes),
             )
         }
     }

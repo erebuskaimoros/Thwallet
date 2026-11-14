@@ -51,7 +51,7 @@ class SwapSuspensionTest {
             EvmNetworkCatalog.mantle to "MANTLE.MNT",
             EvmNetworkCatalog.sei to "SEI.SEI",
             EvmNetworkCatalog.hyperEvm to "HYPEREVM.HYPE",
-            EvmNetworkCatalog.robinhood to "ROBINHOOD.ETH",
+            BlockchainType.RobinhoodChain to "ROBINHOOD.ETH",
         )
 
         expected.forEach { (blockchainType, canonicalAsset) ->
@@ -89,6 +89,16 @@ class SwapSuspensionTest {
         val yxlm = token(BlockchainType.Stellar, TokenType.Asset("yXLM", "gabc"))
 
         assertEquals("XLM.yXLM-GABC", CanonicalAssetId.of(yxlm))
+    }
+
+    @Test
+    fun `near native and nep141 tokens get the NEAR chain code`() {
+        assertEquals("NEAR.NEAR", CanonicalAssetId.of(token(BlockchainType.Near, TokenType.Native)))
+        assertEquals(
+            "NEAR.USDT.TETHER-TOKEN.NEAR",
+            CanonicalAssetId.of(token(BlockchainType.Near, TokenType.Nep141("usdt.tether-token.near")))
+        )
+        assertEquals("NEAR", CanonicalAssetId.chainOf("NEAR.USDT.TETHER-TOKEN.NEAR"))
     }
 
     @Test

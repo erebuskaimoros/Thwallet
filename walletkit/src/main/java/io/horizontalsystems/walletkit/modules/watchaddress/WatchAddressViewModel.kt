@@ -192,13 +192,16 @@ class WatchAddressViewModel(
         }
 
         this.address = address
+        type = parsedType
+
         if (!accountNameEdited) {
-            address.domain?.let {
+            // A NEAR named account is its own name, so the parser leaves domain empty for it.
+            val name = address.domain ?: address.hex.takeIf { type == Type.NearAddress && it.contains('.') }
+            name?.let {
                 accountName = it
             }
         }
 
-        type = parsedType
         inputState = DataState.Success(address.domain ?: address.hex)
 
         syncSubmitButtonType()
@@ -233,35 +236,39 @@ class WatchAddressViewModel(
         }
 
         return when (address.blockchainType) {
-            BlockchainType.Bitcoin,
-            BlockchainType.BitcoinCash,
-            BlockchainType.ECash,
-            BlockchainType.Litecoin,
-            BlockchainType.Dash,
-            BlockchainType.Dogecoin -> Type.BitcoinAddress
+        BlockchainType.Bitcoin,
+        BlockchainType.BitcoinCash,
+        BlockchainType.ECash,
+        BlockchainType.Litecoin,
+        BlockchainType.Dash,
+        BlockchainType.Dogecoin -> Type.BitcoinAddress
 
-            BlockchainType.Ethereum,
-            BlockchainType.BinanceSmartChain,
-            BlockchainType.Polygon,
-            BlockchainType.Avalanche,
-            BlockchainType.Optimism,
-            BlockchainType.Base,
-            BlockchainType.ZkSync,
-            BlockchainType.ArbitrumOne,
-            BlockchainType.Gnosis,
-            BlockchainType.Fantom -> Type.EvmAddress
+        BlockchainType.Ethereum,
+        BlockchainType.BinanceSmartChain,
+        BlockchainType.Polygon,
+        BlockchainType.Avalanche,
+        BlockchainType.Optimism,
+        BlockchainType.Base,
+        BlockchainType.ZkSync,
+        BlockchainType.RobinhoodChain,
+        BlockchainType.Arc,
+        BlockchainType.ArbitrumOne,
+        BlockchainType.Gnosis,
+        BlockchainType.Fantom -> Type.EvmAddress
 
-            BlockchainType.Solana -> Type.SolanaAddress
-            BlockchainType.Tron -> Type.TronAddress
-            BlockchainType.Ton -> Type.TonAddress
-            BlockchainType.Stellar -> Type.StellarAddress
-            BlockchainType.Monero -> Type.MoneroAddress
-            BlockchainType.Zcash,
-            BlockchainType.Zano,
-            BlockchainType.Thorchain,
-            BlockchainType.Mayachain,
-            is BlockchainType.Unsupported,
-            null -> Type.Unsupported
+        BlockchainType.Solana -> Type.SolanaAddress
+        BlockchainType.Tron -> Type.TronAddress
+        BlockchainType.Ton -> Type.TonAddress
+        BlockchainType.Stellar -> Type.StellarAddress
+        BlockchainType.Xrp -> Type.XrpAddress
+        BlockchainType.Near -> Type.NearAddress
+        BlockchainType.Thorchain -> Type.ThorchainAddress
+        BlockchainType.Mayachain -> Type.MayachainAddress
+        BlockchainType.Monero -> Type.MoneroAddress
+        BlockchainType.Zcash,
+        BlockchainType.Zano,
+        is BlockchainType.Unsupported,
+        null -> Type.Unsupported
         }
     }
 
@@ -313,6 +320,10 @@ class WatchAddressViewModel(
             Type.BitcoinAddress -> SubmitButtonType.Watch(address != null)
             Type.TonAddress -> SubmitButtonType.Watch(address != null)
             Type.StellarAddress -> SubmitButtonType.Watch(address != null)
+            Type.XrpAddress -> SubmitButtonType.Watch(address != null)
+            Type.NearAddress -> SubmitButtonType.Watch(address != null)
+            Type.ThorchainAddress -> SubmitButtonType.Watch(address != null)
+            Type.MayachainAddress -> SubmitButtonType.Watch(address != null)
             Type.MoneroAddress -> SubmitButtonType.Watch(address != null && viewKey != null)
             Type.Unsupported -> SubmitButtonType.Watch(false)
         }
@@ -339,6 +350,21 @@ class WatchAddressViewModel(
             AccountType.StellarAddress(it.hex)
         }
 
+        Type.XrpAddress -> address?.let {
+            AccountType.XrpAddress(it.hex)
+        }
+        Type.NearAddress -> address?.let {
+            AccountType.NearAddress(it.hex)
+        }
+
+        Type.ThorchainAddress -> address?.let {
+            AccountType.ThorchainAddress(it.hex)
+        }
+
+        Type.MayachainAddress -> address?.let {
+            AccountType.MayachainAddress(it.hex)
+        }
+
         Type.MoneroAddress -> address?.let {
             AccountType.MoneroWatchAccount(it.hex, viewKey!!, birthdayHeight ?: 1)
         }
@@ -354,6 +380,10 @@ class WatchAddressViewModel(
         BitcoinAddress,
         TonAddress,
         StellarAddress,
+        XrpAddress,
+        NearAddress,
+        ThorchainAddress,
+        MayachainAddress,
         MoneroAddress,
         Unsupported
     }

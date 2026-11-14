@@ -3,25 +3,55 @@ package io.horizontalsystems.walletkit.core.adapters
 import io.horizontalsystems.walletkit.core.AdapterState
 import io.horizontalsystems.walletkit.core.App
 import io.horizontalsystems.walletkit.core.ITransactionsAdapter
+import io.horizontalsystems.walletkit.core.managers.ISpamOutgoingContextSource
+import io.horizontalsystems.walletkit.core.managers.PoisoningScorer
 import io.horizontalsystems.walletkit.core.managers.SolanaKitWrapper
+import io.horizontalsystems.walletkit.core.managers.SolanaTransactionEventExtractor
 import io.horizontalsystems.walletkit.entities.LastBlockInfo
+import io.horizontalsystems.walletkit.entities.TransactionValue
 import io.horizontalsystems.walletkit.entities.transactionrecords.TransactionRecord
+import io.horizontalsystems.walletkit.entities.transactionrecords.solana.SolanaIncomingTransactionRecord
+import io.horizontalsystems.walletkit.entities.transactionrecords.solana.SolanaOutgoingTransactionRecord
+import io.horizontalsystems.walletkit.entities.transactionrecords.solana.SolanaSwapTransactionRecord
 import io.horizontalsystems.walletkit.modules.transactions.FilterTransactionType
 import io.horizontalsystems.marketkit.models.Token
 import io.horizontalsystems.marketkit.models.TokenType
 import io.horizontalsystems.solanakit.SolanaKit
-import io.reactivex.Flowable
+import io.horizontalsystems.solanakit.models.FullTransaction
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.rx2.asFlowable
 
 class SolanaTransactionsAdapter(
         solanaKitWrapper: SolanaKitWrapper,
         private val solanaTransactionConverter: SolanaTransactionConverter
-) : ITransactionsAdapter {
+) : ITransactionsAdapter, ISpamOutgoingContextSource {
 
     private val kit = solanaKitWrapper.solanaKit
+    private val spamContextExtractor = SolanaTransactionEventExtractor()
+
+    // Supplies the recent counterparties that SpamManager correlates incoming dust senders against
+    // for address-poisoning detection. Without this, Solana gray-zone transactions (dust, zero-value
+    // NFTs) could never accrue the prefix/suffix/time points needed to cross the spam threshold.
+    //
+    // We pull BOTH directions (incoming = null): Solana poisoning most often mimics the sender of an
+    // INCOMING payment, not an address the user sent to — and a watch/receive-only wallet has no
+    // outgoing history at all, so an outgoing-only context would always be empty. `transactionHash`
+    // is the UTF-8 encoding of the incoming tx's base58 signature (see SolanaTransactionConverter),
+    // and `getAllTransactions(fromHash = ...)` returns strictly older transactions — the correct
+    // context window. Solana carries no confirmed slot, so block correlation is unavailable; the
+    // extractor leaves blockHeight null.
+    override suspend fun getOutgoingContext(
+        transactionHash: ByteArray,
+        operationId: Long?,
+        limit: Int
+    ): List<PoisoningScorer.OutgoingTxInfo> {
+        val userAddress = kit.receiveAddress
+        val fromHash = String(transactionHash, Charsets.UTF_8)
+        return kit.getAllTransactions(incoming = null, fromHash = fromHash, limit = limit)
+            .sortedByDescending { it.transaction.timestamp }
+            .mapNotNull { spamContextExtractor.extractCounterpartyInfo(it, userAddress) }
+    }
 
     override val explorerTitle: String
         get() = "Solscan.io"
@@ -32,14 +62,14 @@ class SolanaTransactionsAdapter(
     override val lastBlockInfo: LastBlockInfo?
         get() = kit.lastBlockHeight?.toInt()?.let { LastBlockInfo(it) }
 
-    override val lastBlockUpdatedFlowable: Flowable<Unit>
-        get() = kit.lastBlockHeightFlow.map {}.asFlowable()
+    override val lastBlockUpdatedFlow: Flow<Unit>
+        get() = kit.lastBlockHeightFlow.map {}
 
     override val transactionsState: AdapterState
         get() = convertToAdapterState(kit.transactionsSyncState)
 
-    override val transactionsStateUpdatedFlowable: Flowable<Unit>
-        get() = kit.transactionsSyncStateFlow.map {}.asFlowable()
+    override val transactionsStateUpdatedFlow: Flow<Unit>
+        get() = kit.transactionsSyncStateFlow.map {}
 
     override suspend fun getTransactions(
         from: TransactionRecord?,
@@ -65,14 +95,48 @@ class SolanaTransactionsAdapter(
             else -> return listOf()
         }
 
-        val transactions = when {
-            token == null -> kit.getAllTransactions(incoming, from?.transactionHash, limit)
-            token.type is TokenType.Native -> kit.getSolTransactions(incoming, from?.transactionHash, limit)
-            token.type is TokenType.Spl -> kit.getSplTransactions((token.type as TokenType.Spl).address, incoming, from?.transactionHash, limit)
-            else -> listOf()
+        // The caller reads a short page as "nothing older" (TransactionAdapterWrapper.allLoaded), so
+        // when `movesToken` drops records the page is refilled from older transactions until it is
+        // full or the kit runs out.
+        val records = mutableListOf<TransactionRecord>()
+        var fromHash = from?.transactionHash
+        while (records.size < limit) {
+            val page = when {
+                token == null -> kit.getAllTransactions(incoming, fromHash, limit)
+                token.type is TokenType.Native -> kit.getSolTransactions(incoming, fromHash, limit)
+                token.type is TokenType.Spl -> kit.getSplTransactions((token.type as TokenType.Spl).address, incoming, fromHash, limit)
+                else -> listOf()
+            }
+            records.addAll(convert(page, token))
+            if (page.size < limit) break
+            fromHash = page.last().transaction.hash
         }
 
-        return transactions.map { solanaTransactionConverter.transactionRecord(it) }
+        return records.take(limit)
+    }
+
+    private suspend fun convert(transactions: List<FullTransaction>, token: Token?): List<TransactionRecord> =
+        transactions
+            .map { solanaTransactionConverter.transactionRecord(it) }
+            .filter { token == null || movesToken(it, token) }
+
+    // Whether a record belongs on [token]'s page. The kit lists a transaction under SOL whenever the
+    // wallet's SOL balance changed, but a transaction can move SOL only as a network cost: a swap
+    // pays fees, token-account rent or escrow rent without SOL being a side of it (a token-to-token
+    // swap, or either half of a 1inch Fusion swap), and a plain SPL send pays rent when it creates
+    // the recipient's token account. The converter already sets such legs aside (`primaryTransfer`,
+    // `collapseTokenWithSolRent`), so a recognized send, receive or swap is shown on a token's page
+    // only when the token is a value it actually moved. A pending swap has no legs yet and unknown
+    // records carry every leg, so both stay wherever the kit listed them.
+    private fun movesToken(record: TransactionRecord, token: Token): Boolean {
+        val values = when (record) {
+            is SolanaIncomingTransactionRecord -> listOf(record.value)
+            is SolanaOutgoingTransactionRecord -> listOf(record.value)
+            is SolanaSwapTransactionRecord -> listOfNotNull(record.valueIn, record.valueOut)
+            else -> return true
+        }
+        if (values.isEmpty()) return true
+        return values.any { (it as? TransactionValue.CoinValue)?.token == token }
     }
 
     override fun getTransactionRecordsFlow(
@@ -99,9 +163,7 @@ class SolanaTransactionsAdapter(
             else -> emptyFlow()
         }
 
-        return transactionsFlow.map { txList ->
-            txList.map { solanaTransactionConverter.transactionRecord(it) }
-        }
+        return transactionsFlow.map { txList -> convert(txList, token) }
     }
 
     private fun convertToAdapterState(syncState: SolanaKit.SyncState): AdapterState =

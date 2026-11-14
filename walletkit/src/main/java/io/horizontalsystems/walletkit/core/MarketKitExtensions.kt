@@ -33,6 +33,16 @@ val Token.isCustom: Boolean
 val Coin.isCustom: Boolean
     get() = uid.startsWith(TokenQuery.customCoinPrefix)
 
+// Synthetic coins (e.g. thorchain-secured-* "Bitcoin (THORChain)", zano-bridged-*)
+// duplicate an original coin on another blockchain. The server marks them with a
+// coinGeckoId pointing at the original (coinGeckoId != uid). They must be hidden from
+// market lists but kept in Coin manager / Receive / Swap for enabling-disabling.
+val Coin.isSynthetic: Boolean
+    get() {
+        val coinGeckoId = coinGeckoId ?: return false
+        return coinGeckoId != uid
+    }
+
 val Token.isSupported: Boolean
     get() = tokenQuery.isSupported
 
@@ -42,6 +52,7 @@ val Token.iconPlaceholder: Int
         else -> R.drawable.coin_placeholder
     }
 
+// Short label for token badges; the full chain name stays in `BlockchainType.title`.
 val TokenQuery.protocolType: String?
     get() = when (tokenType) {
         is TokenType.Native -> {
@@ -51,6 +62,7 @@ val TokenQuery.protocolType: String?
                 BlockchainType.Tron,
                 BlockchainType.Ton -> null
 
+                BlockchainType.RobinhoodChain -> "Robinhood"
                 else -> blockchainType.title
             }
         }
@@ -64,8 +76,8 @@ val TokenQuery.protocolType: String?
                 EvmNetworkCatalog.blast,
                 EvmNetworkCatalog.mantle,
                 EvmNetworkCatalog.sei,
-                EvmNetworkCatalog.hyperEvm,
-                EvmNetworkCatalog.robinhood -> "ERC20"
+                EvmNetworkCatalog.hyperEvm -> "ERC20"
+                BlockchainType.RobinhoodChain -> "Robinhood"
                 else -> blockchainType.title
             }
         }
@@ -103,6 +115,8 @@ val TokenQuery.isSupported: Boolean
         BlockchainType.Optimism,
         BlockchainType.Base,
         BlockchainType.ZkSync,
+        BlockchainType.RobinhoodChain,
+        BlockchainType.Arc,
         BlockchainType.ArbitrumOne,
         BlockchainType.Gnosis,
         BlockchainType.Fantom,
@@ -120,6 +134,12 @@ val TokenQuery.isSupported: Boolean
         }
         BlockchainType.Stellar -> {
             tokenType is TokenType.Native || tokenType is TokenType.Asset
+        }
+        BlockchainType.Xrp -> {
+            tokenType is TokenType.Native || tokenType is TokenType.XrpAsset
+        }
+        BlockchainType.Near -> {
+            tokenType is TokenType.Native || tokenType is TokenType.Nep141
         }
         BlockchainType.Thorchain -> {
             tokenType is TokenType.Native || tokenType is TokenType.ThorchainAsset
@@ -152,6 +172,8 @@ val Blockchain.description: String
         BlockchainType.Optimism -> "L2 chain"
         BlockchainType.Base -> "L2 chain"
         BlockchainType.ZkSync -> "L2 chain"
+        BlockchainType.RobinhoodChain -> "L2 chain"
+        BlockchainType.Arc -> "USDC, ERC20 tokens"
         BlockchainType.ArbitrumOne -> "L2 chain"
         BlockchainType.Solana -> "SOL, SPL tokens"
         BlockchainType.Gnosis -> "xDAI, ERC20 tokens"
@@ -161,10 +183,11 @@ val Blockchain.description: String
         EvmNetworkCatalog.mantle -> "MNT, ERC20 tokens"
         EvmNetworkCatalog.sei -> "SEI, ERC20 tokens"
         EvmNetworkCatalog.hyperEvm -> "HYPE, ERC20 tokens"
-        EvmNetworkCatalog.robinhood -> "ETH, ERC20 tokens"
         BlockchainType.Tron -> "TRX, TRC20 tokens"
         BlockchainType.Ton -> "TON"
         BlockchainType.Stellar -> "XLM, Stellar assets"
+        BlockchainType.Xrp -> "XRP, XRPL tokens"
+        BlockchainType.Near -> "NEAR, NEP-141 tokens"
         BlockchainType.Thorchain -> "RUNE, THORChain assets"
         BlockchainType.Mayachain -> "CACAO, MayaChain assets"
         BlockchainType.Monero -> "XMR"
@@ -175,6 +198,27 @@ val Blockchain.description: String
 fun Blockchain.eip20TokenUrl(address: String) = eip3091url?.replace("\$ref", address)
 
 fun Blockchain.jettonUrl(address: String) = "https://tonviewer.com/$address"
+/** XRPL issued-token page on xrpscan, keyed by display code and issuer. */
+fun Blockchain.xrpAssetUrl(tokenType: TokenType.XrpAsset): String =
+    "https://xrpscan.com/token/${tokenType.displayCode}.${tokenType.issuer}"
+
+/**
+ * Human-readable XRPL currency code: 40-hex codes that spell printable ASCII (RLUSD, USDC) are
+ * decoded; 3-character codes and opaque hex are returned as is. Mirrors xrpkit's CurrencyCodec.
+ */
+val TokenType.XrpAsset.displayCode: String
+    get() {
+        if (currency.length != 40 || !currency.all { it.isDigit() || it.uppercaseChar() in 'A'..'F' }) return currency
+        val bytes = currency.chunked(2).map { it.toInt(16) }
+        val end = bytes.indexOfFirst { it == 0 }.let { if (it < 0) bytes.size else it }
+        if (end == 0) return currency
+        val printable = bytes.take(end).all { it in 0x21..0x7E }
+        val padded = bytes.drop(end).all { it == 0 }
+        return if (printable && padded) String(bytes.take(end).map { it.toChar() }.toCharArray()) else currency
+    }
+
+fun Blockchain.nep141TokenUrl(contractId: String) = "https://nearblocks.io/token/$contractId"
+
 fun Blockchain.assetUrl(code: String, issuer: String) = "https://stellar.expert/explorer/public/asset/$code-$issuer"
 
 val BlockchainType.imageUrl: String
@@ -185,6 +229,7 @@ val BlockchainType.restoreSettingTypes: List<RestoreSettingType>
         BlockchainType.Monero,
         BlockchainType.Zano,
         BlockchainType.Zcash -> listOf(RestoreSettingType.BirthdayHeight)
+        BlockchainType.Near -> listOf(RestoreSettingType.NearAccountId)
         else -> listOf()
     }
 
@@ -204,6 +249,8 @@ private val blockchainOrderMap: Map<BlockchainType, Int> by lazy {
         BlockchainType.ArbitrumOne,
         BlockchainType.Optimism,
         BlockchainType.Stellar,
+        BlockchainType.Xrp,
+        BlockchainType.Near,
         BlockchainType.Thorchain,
         BlockchainType.Mayachain,
         BlockchainType.Dash,
@@ -214,6 +261,8 @@ private val blockchainOrderMap: Map<BlockchainType, Int> by lazy {
         BlockchainType.Ton,
         BlockchainType.ECash,
         BlockchainType.ZkSync,
+        BlockchainType.RobinhoodChain,
+        BlockchainType.Arc,
         BlockchainType.Gnosis,
         BlockchainType.Fantom,
         EvmNetworkCatalog.cronos,
@@ -221,7 +270,6 @@ private val blockchainOrderMap: Map<BlockchainType, Int> by lazy {
         EvmNetworkCatalog.mantle,
         EvmNetworkCatalog.sei,
         EvmNetworkCatalog.hyperEvm,
-        EvmNetworkCatalog.robinhood,
     ).forEachIndexed { index, blockchainType ->
         map[blockchainType] = index
     }
@@ -240,6 +288,8 @@ val BlockchainType.tokenIconPlaceholder: Int
         BlockchainType.Optimism -> R.drawable.optimism_erc20
         BlockchainType.Base -> R.drawable.base_erc20
         BlockchainType.ZkSync -> R.drawable.zksync_erc20
+        BlockchainType.RobinhoodChain -> R.drawable.robinhood_chain
+        BlockchainType.Arc -> R.drawable.arc_erc20
         BlockchainType.ArbitrumOne -> R.drawable.arbitrum_erc20
         BlockchainType.Gnosis -> R.drawable.gnosis_erc20
         BlockchainType.Fantom -> R.drawable.fantom_erc20
@@ -247,11 +297,12 @@ val BlockchainType.tokenIconPlaceholder: Int
         EvmNetworkCatalog.blast,
         EvmNetworkCatalog.mantle,
         EvmNetworkCatalog.sei,
-        EvmNetworkCatalog.hyperEvm,
-        EvmNetworkCatalog.robinhood -> R.drawable.erc20
+        EvmNetworkCatalog.hyperEvm -> R.drawable.erc20
         BlockchainType.Tron -> R.drawable.tron_trc20
         BlockchainType.Ton -> R.drawable.the_open_network_jetton
         BlockchainType.Stellar -> R.drawable.stellar_asset
+        BlockchainType.Xrp -> R.drawable.xrp_asset
+        BlockchainType.Near -> R.drawable.near_nep141
         else -> R.drawable.coin_placeholder
     }
 
@@ -272,6 +323,8 @@ val BlockchainType.title: String
     BlockchainType.Optimism -> "Optimism"
     BlockchainType.Base -> "Base"
     BlockchainType.ZkSync -> "ZKsync"
+    BlockchainType.RobinhoodChain -> "Robinhood Chain"
+    BlockchainType.Arc -> "Arc"
     BlockchainType.Solana -> "Solana"
     BlockchainType.Gnosis -> "Gnosis"
     BlockchainType.Fantom -> "Fantom"
@@ -280,10 +333,11 @@ val BlockchainType.title: String
     EvmNetworkCatalog.mantle -> "Mantle"
     EvmNetworkCatalog.sei -> "Sei EVM"
     EvmNetworkCatalog.hyperEvm -> "HyperEVM"
-    EvmNetworkCatalog.robinhood -> "Robinhood Chain"
     BlockchainType.Tron -> "Tron"
     BlockchainType.Ton -> "Ton"
     BlockchainType.Stellar -> "Stellar"
+    BlockchainType.Xrp -> "XRP Ledger"
+    BlockchainType.Near -> "NEAR"
     BlockchainType.Thorchain -> "THORChain"
     BlockchainType.Mayachain -> "MayaChain"
     BlockchainType.Monero -> "Monero"
@@ -301,6 +355,8 @@ val BlockchainType.brandColor: Color?
         BlockchainType.Optimism -> Color(0xFFEB3431)
         BlockchainType.Base -> Color(0xFF2759F6)
         BlockchainType.ZkSync -> Color(0xFF8D8FF0)
+        BlockchainType.RobinhoodChain -> Color(0xFF00C805)
+        BlockchainType.Arc -> Color(0xFF4A7BB7)
         BlockchainType.ArbitrumOne -> Color(0xFF96BEDC)
         else -> null
     }
@@ -335,8 +391,32 @@ private val chainIdBlockchainTypeMap: Map<Long, BlockchainType> = mapOf(
     5000L to EvmNetworkCatalog.mantle,
     1329L to EvmNetworkCatalog.sei,
     999L to EvmNetworkCatalog.hyperEvm,
-    4663L to EvmNetworkCatalog.robinhood,
+    4663L to BlockchainType.RobinhoodChain,
+    5042L to BlockchainType.Arc,
 )
+
+// Contract that exposes the native coin through an ERC-20 interface over the same balance.
+// ZkSync reports plain ETH movements as ERC-20 transfers of its L2 ETH system contract; Arc
+// predeploys a 6-decimal ERC-20 view of its 18-decimal native USDC. Neither is a separate
+// token, so it must never be enabled as one.
+val BlockchainType.nativeTokenContractAddress: String?
+    get() = when (this) {
+        BlockchainType.ZkSync -> "0x000000000000000000000000000000000000800a"
+        BlockchainType.Arc -> "0x3600000000000000000000000000000000000000"
+        else -> null
+    }
+
+// Arc also mirrors every native value movement as a Transfer log from this system address.
+// It is not a contract; the amount is already covered by the transaction value or an
+// internal transaction, so its events are dropped from history and never treated as a token.
+const val ARC_NATIVE_TRANSFER_LOG_ADDRESS = "0xfffffffffffffffffffffffffffffffffffffffe"
+
+// Contract addresses whose Transfer logs must never be auto-enabled as ERC-20 wallets.
+val BlockchainType.blockedEip20Addresses: Set<String>
+    get() = when (this) {
+        BlockchainType.Arc -> setOf(nativeTokenContractAddress!!, ARC_NATIVE_TRANSFER_LOG_ADDRESS)
+        else -> setOfNotNull(nativeTokenContractAddress)
+    }
 
 val BlockchainType.isEvm: Boolean
     get() = if (this in EvmNetworkCatalog.blockchainTypes) {
@@ -352,6 +432,8 @@ val BlockchainType.isEvm: Boolean
         BlockchainType.Optimism,
         BlockchainType.Polygon,
         BlockchainType.ZkSync,
+        BlockchainType.RobinhoodChain,
+        BlockchainType.Arc,
             -> true
 
         BlockchainType.Bitcoin,
@@ -362,6 +444,8 @@ val BlockchainType.isEvm: Boolean
         BlockchainType.Litecoin,
         BlockchainType.Solana,
         BlockchainType.Stellar,
+        BlockchainType.Xrp,
+        BlockchainType.Near,
         BlockchainType.Thorchain,
         BlockchainType.Mayachain,
         BlockchainType.Ton,
@@ -402,12 +486,16 @@ fun BlockchainType.supports(accountType: AccountType): Boolean {
                 BlockchainType.Polygon,
                 BlockchainType.Solana,
                 BlockchainType.Stellar,
+                BlockchainType.Xrp,
+                BlockchainType.Near,
                 BlockchainType.Thorchain,
                 BlockchainType.Mayachain,
                 BlockchainType.Ton,
                 BlockchainType.Tron,
                 BlockchainType.Zcash,
-                BlockchainType.ZkSync -> true
+                BlockchainType.ZkSync,
+                BlockchainType.RobinhoodChain,
+                BlockchainType.Arc -> true
                 is BlockchainType.Unsupported -> false
             }
         }
@@ -436,6 +524,8 @@ fun BlockchainType.supports(accountType: AccountType): Boolean {
                     || this == BlockchainType.Optimism
                     || this == BlockchainType.Base
                     || this == BlockchainType.ZkSync
+                    || this == BlockchainType.RobinhoodChain
+                    || this == BlockchainType.Arc
                     || this == BlockchainType.ArbitrumOne
                     || this == BlockchainType.Gnosis
                     || this == BlockchainType.Fantom
@@ -447,6 +537,8 @@ fun BlockchainType.supports(accountType: AccountType): Boolean {
                     || this == BlockchainType.Optimism
                     || this == BlockchainType.Base
                     || this == BlockchainType.ZkSync
+                    || this == BlockchainType.RobinhoodChain
+                    || this == BlockchainType.Arc
                     || this == BlockchainType.ArbitrumOne
                     || this == BlockchainType.Gnosis
                     || this == BlockchainType.Fantom
@@ -469,6 +561,18 @@ fun BlockchainType.supports(accountType: AccountType): Boolean {
         is AccountType.StellarSecretKey ->
             this == BlockchainType.Stellar
 
+        is AccountType.XrpAddress ->
+            this == BlockchainType.Xrp
+
+        is AccountType.NearAddress ->
+            this == BlockchainType.Near
+
+        is AccountType.ThorchainAddress ->
+            this == BlockchainType.Thorchain
+
+        is AccountType.MayachainAddress ->
+            this == BlockchainType.Mayachain
+
         is AccountType.MoneroWatchAccount ->
             this == BlockchainType.Monero
 
@@ -489,7 +593,7 @@ val TokenType.order: Int
         return when (this) {
             TokenType.Native -> 0
             is TokenType.Derived -> derivation.accountTypeDerivation.order
-            is TokenType.AddressTyped -> type.bitcoinCashCoinType.ordinal
+            is TokenType.AddressTyped -> type.bitcoinCashCoinType.order
             else -> Int.MAX_VALUE
         }
     }
@@ -608,7 +712,7 @@ val TokenType.AddressType.bitcoinCashCoinType: BitcoinCashCoinType
     }
 
 private val noBadgeCoinCodes by lazy {
-    listOf("AVAX", "XLM", "DASH", "DOGE", "ZEC", "XMR", "XEC", "POL", "SOL", "XDAI", "FTM")
+    listOf("AVAX", "XLM", "DASH", "DOGE", "ZEC", "XMR", "XEC", "POL", "SOL", "XDAI", "FTM", "RUNE", "CACAO", "XRP", "ZANO", "NEAR")
 }
 
 val Token.coinCodeWithNetwork: String
@@ -702,10 +806,11 @@ val BlockchainType.Companion.supported: List<BlockchainType>
         BlockchainType.Optimism,
         BlockchainType.Base,
         BlockchainType.ZkSync,
+        BlockchainType.RobinhoodChain,
+        BlockchainType.Arc,
         BlockchainType.ArbitrumOne,
         BlockchainType.Gnosis,
         BlockchainType.Fantom,
-        BlockchainType.Tron,
     )
         .plus(EvmNetworkCatalog.blockchainTypes)
         .plus(ChainRegistry.all.map { it.blockchainType })

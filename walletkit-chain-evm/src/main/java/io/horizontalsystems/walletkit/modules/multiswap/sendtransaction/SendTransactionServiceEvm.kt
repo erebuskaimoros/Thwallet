@@ -53,18 +53,17 @@ import io.horizontalsystems.ethereumkit.decorations.TransactionDecoration
 import io.horizontalsystems.ethereumkit.models.GasPrice
 import io.horizontalsystems.ethereumkit.models.TransactionData
 import io.horizontalsystems.marketkit.models.BlockchainType
-import io.reactivex.Flowable
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.rx2.await
 import java.math.BigDecimal
 
 class SendTransactionServiceEvm(
-    blockchainType: BlockchainType,
+    private val blockchainType: BlockchainType,
     initialGasPrice: GasPrice? = null,
     initialNonce: Long? = null,
     minGasPrice: GasPrice? = null,
@@ -76,13 +75,14 @@ class SendTransactionServiceEvm(
         EvmKitManagerRegistry.getEvmKitManager(blockchainType)
             .getEvmKitWrapper(account, blockchainType)
     }
-    private val gasPriceService: IEvmGasPriceService by lazy {
+    // Lazy so a service that never started has nothing to release; see clear().
+    private val gasPriceServiceDelegate = lazy<IEvmGasPriceService> {
         val evmKit = evmKitWrapper.evmKit
         if (evmKit.chain.isEIP1559Supported) {
             val gasPriceProvider = Eip1559GasPriceProvider(evmKit)
             Eip1559GasPriceService(
                 gasProvider = gasPriceProvider,
-                refreshSignalFlowable = Flowable.empty(),
+                refreshSignalFlow = emptyFlow(),
                 minGasPrice = minGasPrice as? GasPrice.Eip1559,
                 initialGasPrice = initialGasPrice as? GasPrice.Eip1559
             )
@@ -95,13 +95,15 @@ class SendTransactionServiceEvm(
             )
         }
     }
-    private val feeService by lazy {
+    private val gasPriceService by gasPriceServiceDelegate
+    private val feeServiceDelegate = lazy {
         val gasDataService = EvmCommonGasDataService.instance(
             evmKitWrapper.evmKit,
             evmKitWrapper.blockchainType
         )
         EvmFeeService(evmKitWrapper.evmKit, gasPriceService, gasDataService)
     }
+    private val feeService by feeServiceDelegate
     private val coinServiceFactory by lazy {
         EvmCoinServiceFactory(
             token,
@@ -139,6 +141,13 @@ class SendTransactionServiceEvm(
         loading = loading,
         fields = fields,
     )
+
+    // The fee and gas-price services poll on scopes of their own, which the scope handed to
+    // start() does not cancel.
+    override fun clear() {
+        if (feeServiceDelegate.isInitialized()) feeService.clear()
+        if (gasPriceServiceDelegate.isInitialized()) gasPriceService.clear()
+    }
 
     override fun start(coroutineScope: CoroutineScope) {
         gasPriceService.start()
@@ -226,15 +235,27 @@ class SendTransactionServiceEvm(
         feeService.setTransactionData(data.transactionData.toKitTransactionData())
     }
 
+    // The fee estimate lands through the settings service's collector, so this instance keeps
+    // describing the previous transaction until then; a replaced deposit gets a fresh instance
+    // that starts from the gas price on screen and a nonce the user fixed, if any.
+    override fun fresh(): AbstractSendTransactionService {
+        val nonce = nonceService.state.dataOrNull?.takeIf { !it.default || it.fixed }?.nonce
+        return SendTransactionServiceEvm(
+            blockchainType,
+            initialGasPrice = gasPriceService.stateFlow.value.dataOrNull?.gasPrice,
+            initialNonce = nonce,
+        )
+    }
+
     suspend fun signTransaction(): EvmKitManager.SignedTx {
         val tx = transaction ?: throw Exception("Transaction not ready")
         if (tx.errors.isNotEmpty()) throw Exception("Transaction has errors")
-        return evmKitWrapper.signSingle(
+        return evmKitWrapper.sign(
             tx.transactionData,
             tx.gasData.gasPrice,
             tx.gasData.gasLimit,
             tx.nonce,
-        ).await()
+        )
     }
 
     override suspend fun sendTransaction(mevProtectionEnabled: Boolean): SendTransactionResult.Evm {
@@ -247,7 +268,7 @@ class SendTransactionServiceEvm(
         val nonce = transaction.nonce
 
         val fullTransaction = evmKitWrapper
-            .sendSingle(transactionData, gasPrice, gasLimit, nonce, mevProtectionEnabled).await()
+            .send(transactionData, gasPrice, gasLimit, nonce, mevProtectionEnabled)
         return SendTransactionResult.Evm(fullTransaction.transaction.hash.toHexString())
     }
 

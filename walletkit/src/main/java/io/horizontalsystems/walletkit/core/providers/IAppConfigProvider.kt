@@ -34,11 +34,16 @@ interface IAppConfigProvider {
     val simplexSupportChat: String
     val nymVpnLink: String
     val telegramSupportChat: String
+    val labsSimplexSwapBotLink: String
+    val labsTelegramSwapBotLink: String
+    val labsSignalSwapBotLink: String
+    val labsSwapWebLink: String
     val blocksDecodedEthereumRpc: String
     val twitterBearerToken: String
     val etherscanApiKey: List<String>
     val bscscanApiKey: List<String>
-    val otherScanApiKey: List<String>
+    val blockscoutApiKey: List<String>
+    val alchemyApiKey: List<String>
     val guidesUrl: String
     val eduUrl: String
     val faqUrl: String
@@ -49,7 +54,6 @@ interface IAppConfigProvider {
     val openSeaApiKey: String
     val trongridApiKeys: List<String>
     val udnApiKey: String
-    val oneInchApiKey: String
     val thorchainApiKey: String
     val appLinksHost: String
     val fiatDecimal: Int
@@ -57,13 +61,25 @@ interface IAppConfigProvider {
     val currencies: List<Currency>
     val donateAddresses: Map<BlockchainType, String>
     val spamCoinValueLimits: Map<String, BigDecimal>
+    val spamCoinsWithoutMicroDust: Set<String>
     val chainalysisBaseUrl: String
     val chainalysisApiKey: String
     val hashDitBaseUrl: String
     val hashDitApiKey: String
     val uswapApiBaseUrl: String
     val uswapApiKey: String
-    val oneInchPartnerFeeAddress: String
-    val swapFeeBps: Int
+    val tonApiKey: String
+
+    /** FastNEAR API key for NEAR history and token lists; null uses the keyless tier. */
+    val fastNearApiKey: String?
     val fdroidBuild: Boolean
+
+    /**
+     * Whether a token that shows up in the account's history (a received transfer, a swap
+     * output, a discovered token account) gets a wallet enabled for it automatically. An app
+     * that works with a fixed token set turns this off; its wallets then come only from the
+     * explicit enable paths.
+     */
+    val autoEnableTokensOnReceive: Boolean
+        get() = true
 }

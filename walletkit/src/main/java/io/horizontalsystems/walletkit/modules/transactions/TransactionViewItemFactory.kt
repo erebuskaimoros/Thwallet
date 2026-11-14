@@ -3,8 +3,13 @@ package io.horizontalsystems.walletkit.modules.transactions
 import io.horizontalsystems.walletkit.R
 import io.horizontalsystems.walletkit.core.App
 import io.horizontalsystems.walletkit.core.ILocalStorage
+import io.horizontalsystems.walletkit.core.adapters.NearTransactionRecord
+import io.horizontalsystems.walletkit.core.adapters.XrpTransactionRecord
 import io.horizontalsystems.walletkit.core.adapters.StellarTransactionRecord
 import io.horizontalsystems.walletkit.core.adapters.TonTransactionRecord
+import io.horizontalsystems.walletkit.core.alternativeImageUrl
+import io.horizontalsystems.walletkit.core.iconPlaceholder
+import io.horizontalsystems.walletkit.core.imageUrl
 import io.horizontalsystems.walletkit.core.managers.BalanceHiddenManager
 import io.horizontalsystems.walletkit.core.managers.EvmLabelManager
 import io.horizontalsystems.walletkit.core.providers.Translator
@@ -47,7 +52,7 @@ import io.horizontalsystems.walletkit.modules.contacts.model.Contact
 import io.horizontalsystems.walletkit.modules.transactionInfo.ColorName
 import io.horizontalsystems.walletkit.modules.transactionInfo.ColoredValue
 import io.horizontalsystems.marketkit.models.BlockchainType
-import io.horizontalsystems.tronkit.models.Contract
+import io.horizontalsystems.marketkit.models.Token
 import java.math.BigDecimal
 import java.util.Date
 
@@ -89,7 +94,18 @@ class TransactionViewItemFactory(
     private fun singleValueIconType(
         value: TransactionValue,
         nftMetadata: Map<NftUid, NftAssetBriefMetadata> = mapOf()
-    ): TransactionViewItem.Icon =
+    ): TransactionViewItem.Icon = regularIconType(value, nftMetadata)
+
+    private fun coinIconType(token: Token) = TransactionViewItem.Icon.Regular(
+        token.coin.imageUrl,
+        token.coin.alternativeImageUrl,
+        token.fullCoin.iconPlaceholder
+    )
+
+    private fun regularIconType(
+        value: TransactionValue?,
+        nftMetadata: Map<NftUid, NftAssetBriefMetadata> = mapOf()
+    ): TransactionViewItem.Icon.Regular =
         when (value) {
             is TransactionValue.NftValue -> {
                 TransactionViewItem.Icon.Regular(
@@ -106,75 +122,18 @@ class TransactionViewItemFactory(
             is TransactionValue.TokenValue -> {
                 TransactionViewItem.Icon.Regular(value.coinIconUrl, value.alternativeCoinIconUrl, value.coinIconPlaceholder)
             }
+
+            null -> TransactionViewItem.Icon.Regular(null, null, R.drawable.coin_placeholder)
         }
 
     private fun doubleValueIconType(
         primaryValue: TransactionValue?,
         secondaryValue: TransactionValue?,
         nftMetadata: Map<NftUid, NftAssetBriefMetadata> = mapOf()
-    ): TransactionViewItem.Icon {
-        var backUrl: String? = null
-        var backAlternativeUrl: String? = null
-        var backPlaceHolder: Int? = null
-        var backRectangle = false
-        var frontUrl: String? = null
-        var frontAlternativeUrl: String? = null
-        var frontPlaceHolder: Int? = null
-        var frontRectangle = false
-
-        if (primaryValue != null) {
-            when (primaryValue) {
-                is TransactionValue.NftValue -> {
-                    frontRectangle = true
-                    frontUrl = nftMetadata[primaryValue.nftUid]?.previewImageUrl
-                    frontPlaceHolder = R.drawable.icon_24_nft_placeholder
-                }
-
-                is TransactionValue.CoinValue,
-                is TransactionValue.RawValue,
-                is TransactionValue.JettonValue,
-                is TransactionValue.TokenValue -> {
-                    frontRectangle = false
-                    frontUrl = primaryValue.coinIconUrl
-                    frontAlternativeUrl = primaryValue.alternativeCoinIconUrl
-                    frontPlaceHolder = primaryValue.coinIconPlaceholder
-                }
-            }
-        } else {
-            frontRectangle = false
-            frontUrl = null
-            frontPlaceHolder = R.drawable.coin_placeholder
-        }
-
-        if (secondaryValue != null) {
-            when (secondaryValue) {
-                is TransactionValue.NftValue -> {
-                    backRectangle = true
-                    backUrl = nftMetadata[secondaryValue.nftUid]?.previewImageUrl
-                    backPlaceHolder = R.drawable.icon_24_nft_placeholder
-                }
-
-                is TransactionValue.CoinValue,
-                is TransactionValue.RawValue,
-                is TransactionValue.JettonValue,
-                is TransactionValue.TokenValue -> {
-                    backRectangle = false
-                    backUrl = secondaryValue.coinIconUrl
-                    backAlternativeUrl = secondaryValue.alternativeCoinIconUrl
-                    backPlaceHolder = secondaryValue.coinIconPlaceholder
-                }
-            }
-        } else {
-            backRectangle = false
-            backUrl = null
-            backPlaceHolder = R.drawable.coin_placeholder
-        }
-
-        return TransactionViewItem.Icon.Double(
-            back = TransactionViewItem.Icon.Regular(backUrl, backAlternativeUrl, backPlaceHolder, backRectangle),
-            front = TransactionViewItem.Icon.Regular(frontUrl, frontAlternativeUrl, frontPlaceHolder, frontRectangle)
-        )
-    }
+    ): TransactionViewItem.Icon = TransactionViewItem.Icon.Double(
+        back = regularIconType(secondaryValue, nftMetadata),
+        front = regularIconType(primaryValue, nftMetadata)
+    )
 
     private fun iconType(
         blockchainType: BlockchainType,
@@ -433,7 +392,7 @@ class TransactionViewItemFactory(
                 createViewItemFromTronTransactionRecord(
                     uid = record.uid,
                     timestamp = record.timestamp,
-                    contract = record.transaction.contract,
+                    contractLabel = record.transaction.contractLabel,
                     progress = progress,
                     spam = record.spam,
                     icon = icon
@@ -453,6 +412,15 @@ class TransactionViewItemFactory(
                     icon = icon,
                     record = record,
                     currencyValue = transactionItem.currencyValue
+                )
+            }
+
+            is XrpTransactionRecord -> {
+                createViewItemFromXrpTransactionRecord(
+                    icon = icon,
+                    record = record,
+                    currencyValue = transactionItem.currencyValue,
+                    progress = progress,
                 )
             }
 
@@ -520,8 +488,148 @@ class TransactionViewItemFactory(
                 )
             }
 
+            is NearTransactionRecord -> {
+                createViewItemFromNearTransactionRecord(
+                    icon = icon,
+                    record = record,
+                    currencyValue = transactionItem.currencyValue,
+                    progress = progress,
+                )
+            }
+
             else -> throw IllegalArgumentException("Undefined record type ${record.javaClass.name}")
         }
+    }
+
+    private fun createViewItemFromNearTransactionRecord(
+        icon: TransactionViewItem.Icon.Failed?,
+        record: NearTransactionRecord,
+        currencyValue: CurrencyValue?,
+        progress: Float?,
+    ): TransactionViewItem {
+        val iconX: TransactionViewItem.Icon
+        val title: String
+        val subtitle: String
+        val primaryValue: ColoredValue?
+        var secondaryValue = currencyValue?.let { getColoredValue(it, ColorName.Grey) }
+        var sentToSelf = false
+
+        when (val recordType = record.type) {
+            is NearTransactionRecord.Type.Send -> {
+                title = Translator.getString(R.string.Transactions_Send)
+                subtitle = Translator.getString(R.string.Transactions_To, mapped(recordType.to, record.blockchainType))
+                sentToSelf = recordType.sentToSelf
+                primaryValue = if (sentToSelf) {
+                    ColoredValue(getCoinString(recordType.value, true), ColorName.Grey)
+                } else {
+                    getColoredValue(recordType.value, getAmountColorForSend(icon))
+                }
+                iconX = singleValueIconType(recordType.value)
+            }
+
+            is NearTransactionRecord.Type.Receive -> {
+                title = Translator.getString(R.string.Transactions_Receive)
+                subtitle = Translator.getString(R.string.Transactions_From, mapped(recordType.from, record.blockchainType))
+                primaryValue = getColoredValue(recordType.value, ColorName.Remus)
+                iconX = singleValueIconType(recordType.value)
+            }
+
+            is NearTransactionRecord.Type.ContractCall -> {
+                title = Translator.getString(R.string.Transactions_ContractCall)
+                subtitle = recordType.method?.let { "$it · ${recordType.contractId.shorten()}" } ?: recordType.contractId.shorten()
+                val incomingValues = recordType.incoming.map { it.value }
+                val outgoingValues = recordType.outgoing.map { it.value }
+                if (incomingValues.isEmpty() && outgoingValues.isEmpty()) {
+                    primaryValue = null
+                    secondaryValue = null
+                } else {
+                    val values = getValues(incomingValues, outgoingValues, currencyValue, mapOf())
+                    primaryValue = values.first
+                    secondaryValue = values.second
+                }
+                iconX = iconType(record.blockchainType, incomingValues, outgoingValues, mapOf())
+            }
+        }
+
+        return TransactionViewItem(
+            uid = record.uid,
+            progress = progress,
+            title = title,
+            subtitle = subtitle,
+            primaryValue = primaryValue,
+            secondaryValue = secondaryValue,
+            showAmount = showAmount,
+            sentToSelf = sentToSelf,
+            date = Date(record.timestamp * 1000),
+            icon = icon ?: iconX,
+            spam = record.spam
+        )
+    }
+
+    private fun createViewItemFromXrpTransactionRecord(
+        icon: TransactionViewItem.Icon.Failed?,
+        record: XrpTransactionRecord,
+        currencyValue: CurrencyValue?,
+        progress: Float?,
+    ): TransactionViewItem {
+        val iconX: TransactionViewItem.Icon
+        val title: String
+        val subtitle: String
+        val primaryValue: ColoredValue?
+        var secondaryValue = currencyValue?.let { getColoredValue(it, ColorName.Grey) }
+        var sentToSelf = false
+
+        when (val recordType = record.type) {
+            is XrpTransactionRecord.Type.Send -> {
+                title = Translator.getString(R.string.Transactions_Send)
+                subtitle = Translator.getString(R.string.Transactions_To, mapped(recordType.to, record.blockchainType))
+                sentToSelf = recordType.sentToSelf
+                primaryValue = if (sentToSelf) {
+                    ColoredValue(getCoinString(recordType.value, true), ColorName.Grey)
+                } else {
+                    getColoredValue(recordType.value, getAmountColorForSend(icon))
+                }
+                iconX = singleValueIconType(recordType.value)
+            }
+
+            is XrpTransactionRecord.Type.Receive -> {
+                title = Translator.getString(R.string.Transactions_Receive)
+                subtitle = Translator.getString(R.string.Transactions_From, mapped(recordType.from, record.blockchainType))
+                primaryValue = getColoredValue(recordType.value, ColorName.Remus)
+                iconX = singleValueIconType(recordType.value)
+            }
+
+            is XrpTransactionRecord.Type.TrustSet -> {
+                title = Translator.getString(R.string.Transactions_TrustSet)
+                subtitle = recordType.issuer.shorten()
+                // The value is the trust limit (10^15 by default), not an amount moved, so it
+                // has no place on the row and no fiat equivalent; the info page shows it.
+                primaryValue = null
+                secondaryValue = null
+                iconX = singleValueIconType(recordType.value)
+            }
+
+            is XrpTransactionRecord.Type.Unsupported -> {
+                iconX = TransactionViewItem.Icon.Platform(record.blockchainType)
+                title = Translator.getString(R.string.Transactions_XrpTransaction)
+                subtitle = recordType.type
+                primaryValue = null
+            }
+        }
+
+        return TransactionViewItem(
+            uid = record.uid,
+            progress = progress,
+            title = title,
+            subtitle = subtitle,
+            primaryValue = primaryValue,
+            secondaryValue = secondaryValue,
+            showAmount = showAmount,
+            sentToSelf = sentToSelf,
+            date = Date(record.timestamp * 1000),
+            icon = icon ?: iconX,
+            spam = record.spam
+        )
     }
 
     private fun createViewItemFromStellarTransactionRecord(
@@ -570,7 +678,9 @@ class TransactionViewItemFactory(
             is StellarTransactionRecord.Type.ChangeTrust -> {
                 title = Translator.getString(R.string.Transactions_ChangeTrust)
                 subtitle = recordType.trustee.shorten()
-                primaryValue = getColoredValue(recordType.value, ColorName.Leah, true)
+                // The value is the trust limit, not an amount moved; see the XRP TrustSet row.
+                primaryValue = null
+                secondaryValue = null
                 iconX = singleValueIconType(recordType.value)
             }
 
@@ -748,7 +858,12 @@ class TransactionViewItemFactory(
             showAmount = showAmount,
             date = Date(record.timestamp * 1000),
             spam = record.spam,
-            icon = icon ?: doubleValueIconType(record.valueOut, record.valueIn)
+            // The pair by token, not by value: a 1inch Fusion transaction moves only one side
+            // (the other lands in its counterpart transaction) but names both tokens.
+            icon = icon ?: TransactionViewItem.Icon.Double(
+                back = record.tokenIn?.let { coinIconType(it) } ?: regularIconType(record.valueIn),
+                front = record.tokenOut?.let { coinIconType(it) } ?: regularIconType(record.valueOut)
+            )
         )
     }
 
@@ -886,7 +1001,7 @@ class TransactionViewItemFactory(
     private fun createViewItemFromTronTransactionRecord(
         uid: String,
         timestamp: Long,
-        contract: Contract?,
+        contractLabel: String?,
         progress: Float?,
         spam: Boolean,
         icon: TransactionViewItem.Icon?
@@ -894,7 +1009,7 @@ class TransactionViewItemFactory(
         return TransactionViewItem(
             uid = uid,
             progress = progress,
-            title = contract?.label ?: Translator.getString(R.string.Transactions_Unknown),
+            title = contractLabel ?: Translator.getString(R.string.Transactions_Unknown),
             subtitle = Translator.getString(R.string.Transactions_Unknown_Description),
             primaryValue = null,
             secondaryValue = null,

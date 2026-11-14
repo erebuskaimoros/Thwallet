@@ -40,11 +40,11 @@ class DogecoinAdapter(
         "https://blockchair.com/dogecoin/transaction/$transactionHash"
 
     override fun onBalanceUpdate(balance: BalanceInfo) {
-        balanceUpdatedSubject.onNext(Unit)
+        _balanceUpdatedFlow.tryEmit(Unit)
     }
 
     override fun onLastBlockInfoUpdate(blockInfo: BlockInfo) {
-        lastBlockUpdatedSubject.onNext(Unit)
+        _lastBlockUpdatedFlow.tryEmit(Unit)
     }
 
     override fun onKitStateUpdate(state: BitcoinCore.KitState) {
@@ -58,7 +58,7 @@ class DogecoinAdapter(
         val records = mutableListOf<TransactionRecord>()
         inserted.forEach { records.add(transactionRecord(it)) }
         updated.forEach { records.add(transactionRecord(it)) }
-        transactionRecordsSubject.onNext(records)
+        _transactionRecordsFlow.tryEmit(records)
     }
 
     override fun onTransactionsDelete(hashes: List<String>) = Unit

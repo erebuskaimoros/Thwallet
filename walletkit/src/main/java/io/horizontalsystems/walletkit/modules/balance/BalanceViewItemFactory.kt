@@ -3,6 +3,7 @@ package io.horizontalsystems.walletkit.modules.balance
 import androidx.compose.runtime.Immutable
 import io.horizontalsystems.walletkit.R
 import io.horizontalsystems.walletkit.core.AdapterState
+import io.horizontalsystems.walletkit.core.BalanceData
 import io.horizontalsystems.walletkit.core.App
 import io.horizontalsystems.walletkit.core.Caution
 import io.horizontalsystems.walletkit.core.diff
@@ -66,19 +67,23 @@ class ZcashLockedValue(
     coinValue: DeemedValue<String>
 ) : LockedValue(title, info, coinValue)
 
-class StellarLockedValue(
+/** Reserve-style minimum balance (Stellar, XRP Ledger) with its per-item breakdown. */
+class ReserveLockedValue(
     title: TranslatableString,
     info: TranslatableString,
     coinValue: DeemedValue<String>,
-    val lockedValues: List<StellarAssetLockedValue>
+    val lockedValues: List<ReserveLockedItem>
 ) : LockedValue(title, info, coinValue)
 
-data class StellarAssetLockedValue(val title: String, val value: String)
+data class ReserveLockedItem(val title: String, val value: String)
 
 
 @Immutable
 data class BalanceViewItem2(
     val wallet: Wallet,
+    // The raw balance the formatted values were derived from, for callers that filter or
+    // compute rather than display.
+    val balanceData: BalanceData,
     val primaryValue: DeemedValue<String>?,
     val exchangeValue: DeemedValue<String>?,
     val diff: DeemedValue<BigDecimal>?,
@@ -155,6 +160,7 @@ class BalanceViewItemFactory {
             BlockchainType.Monero,
             BlockchainType.Zano -> 10
 
+
             BlockchainType.Ethereum,
             BlockchainType.BinanceSmartChain,
             BlockchainType.Polygon,
@@ -162,12 +168,16 @@ class BalanceViewItemFactory {
             BlockchainType.Optimism,
             BlockchainType.Base,
             BlockchainType.ZkSync,
+            BlockchainType.RobinhoodChain,
+            BlockchainType.Arc,
             BlockchainType.Solana,
             BlockchainType.Gnosis,
             BlockchainType.Fantom,
             BlockchainType.ArbitrumOne,
             BlockchainType.Tron,
             BlockchainType.Stellar,
+            BlockchainType.Xrp,
+            BlockchainType.Near,
             BlockchainType.Thorchain,
             BlockchainType.Mayachain,
             BlockchainType.Ton -> 50
@@ -325,22 +335,13 @@ class BalanceViewItemFactory {
                 wallet.decimal,
                 wallet.token
             )?.let {
-                val locked = mutableListOf<StellarAssetLockedValue>()
-                val info = TranslatableString.ResString(R.string.Info_Reserved_Description).toString()
-
-                locked.add(
-                    StellarAssetLockedValue(
-                        Translator.getString(R.string.Info_Reserved_WalletAction),
-                        "1 XLM"
-                    )
-                )
-
-                item.balanceData.stellarAssets.forEach {
-                    locked.add(StellarAssetLockedValue(it.code, "0.5 XLM"))
-                }
+                // the adapter knows its chain's reserve rules; core only renders them
+                val reserve = item.balanceData.reserve
+                val locked = reserve?.items?.map { ReserveLockedItem(it.title, it.value) } ?: emptyList()
+                val info = reserve?.description ?: Translator.getString(R.string.Info_Reserved_Description)
 
                 add(
-                    StellarLockedValue(
+                    ReserveLockedValue(
                         title = TranslatableString.ResString(R.string.Info_Reserved_Title),
                         info = TranslatableString.PlainString(info),
                         coinValue = it,
@@ -445,6 +446,7 @@ class BalanceViewItemFactory {
 
         return BalanceViewItem2(
             wallet = item.wallet,
+            balanceData = item.balanceData,
             primaryValue = primaryValue,
             secondaryValue = secondaryValue,
             exchangeValue = latestRate?.let { BalanceViewHelper.rateValue(it, currency) },
@@ -456,7 +458,8 @@ class BalanceViewItemFactory {
             badge = wallet.badge,
             errorMessage = errorMessage,
             isWatchAccount = watchAccount,
-            notActivated = item.warning is BalanceModule.BalanceWarning.TronInactiveAccountWarning,
+            notActivated = item.warning is BalanceModule.BalanceWarning.TronInactiveAccountWarning ||
+                    item.warning is BalanceModule.BalanceWarning.XrpInactiveAccountWarning,
             loading = state is AdapterState.Syncing || state is AdapterState.SearchingTxs
         )
     }

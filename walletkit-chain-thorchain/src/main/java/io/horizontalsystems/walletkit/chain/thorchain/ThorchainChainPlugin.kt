@@ -1,14 +1,15 @@
 package io.horizontalsystems.walletkit.chain.thorchain
 
-import androidx.compose.runtime.Composable
 import io.horizontalsystems.walletkit.core.App
+import io.horizontalsystems.walletkit.core.chain.SendChainSettings
+import io.horizontalsystems.walletkit.modules.multiswap.sendtransaction.SendTransactionData
+import java.math.BigDecimal
 import io.horizontalsystems.walletkit.core.IAdapter
 import io.horizontalsystems.walletkit.core.ITransactionsAdapter
 import io.horizontalsystems.walletkit.core.adapters.ThorchainAdapter
 import io.horizontalsystems.walletkit.core.adapters.ThorchainTransactionConverter
 import io.horizontalsystems.walletkit.core.adapters.ThorchainTransactionsAdapter
 import io.horizontalsystems.walletkit.core.chain.ChainPlugin
-import io.horizontalsystems.walletkit.core.chain.ChainSendScreenArgs
 import io.horizontalsystems.walletkit.core.managers.RestoreSettings
 import io.horizontalsystems.walletkit.core.managers.ThorchainAccountManager
 import io.horizontalsystems.walletkit.core.managers.ThorchainKitManager
@@ -26,23 +27,35 @@ import io.horizontalsystems.walletkit.modules.multiswap.sendtransaction.Abstract
 import io.horizontalsystems.walletkit.modules.multiswap.sendtransaction.SendTransactionServiceThorchain
 import io.horizontalsystems.walletkit.modules.nav3.HSPage
 import io.horizontalsystems.walletkit.modules.send.address.EnterAddressValidator
-import androidx.lifecycle.viewmodel.compose.viewModel
 import io.horizontalsystems.walletkit.modules.send.address.ThorchainAddressValidator
-import io.horizontalsystems.walletkit.modules.send.thorchain.SendThorchainModule
-import io.horizontalsystems.walletkit.modules.send.thorchain.SendThorchainScreen
-import io.horizontalsystems.walletkit.modules.send.thorchain.SendThorchainViewModel
 import io.horizontalsystems.walletkit.modules.thorchainnetwork.ThorchainNetworkPage
 import io.horizontalsystems.walletkit.modules.transactions.TransactionSource
 import io.horizontalsystems.marketkit.models.BlockchainType
 import io.horizontalsystems.marketkit.models.Token
+import io.horizontalsystems.walletkit.core.chain.SendMemoSupport
+import io.horizontalsystems.walletkit.modules.memo.MemoVisibility
 import io.horizontalsystems.marketkit.models.TokenQuery
 import io.horizontalsystems.marketkit.models.TokenType
+import io.horizontalsystems.thorchainkit.models.Asset as ThorAsset
+import io.horizontalsystems.thorchainkit.models.ThorchainAssetResolver
 import io.horizontalsystems.thorchainkit.network.Network
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 
 class ThorchainChainPlugin : ChainPlugin {
+
+    override fun sendTransactionData(
+        token: Token,
+        amount: BigDecimal,
+        address: String,
+        memo: String?,
+        extraInput: String?,
+        settings: SendChainSettings?,
+    ) = SendTransactionData.Thorchain.Send(address, amount, memo.orEmpty())
+
+    override suspend fun sendMemoSupport(token: Token, address: String?) =
+        SendMemoSupport(maxBytes = 250, visibility = MemoVisibility.Public)
 
     override val blockchainType: BlockchainType = BlockchainType.Thorchain
 
@@ -80,6 +93,10 @@ class ThorchainChainPlugin : ChainPlugin {
             is TokenType.ThorchainAsset -> ThorchainAdapter(kitManager.getThorchainKitWrapper(wallet.account), wallet)
             else -> null
         }
+
+    // Thorchain keeps no per-account store of its own — balances and history come from the API on
+    // demand — so there is nothing to delete when an account is removed.
+    override fun clearAccountData(accountId: String) = Unit
 
     override fun createTransactionsAdapter(source: TransactionSource): ITransactionsAdapter? {
         val baseToken = App.coinManager.getToken(TokenQuery(BlockchainType.Thorchain, TokenType.Native)) ?: return null
@@ -141,24 +158,23 @@ class ThorchainChainPlugin : ChainPlugin {
 
     override fun swapProviders(): List<IMultiSwapProvider> = listOf(ThorChainProvider)
 
+    // The swap server names THORChain-native assets by their notation (THOR.RUNE, THOR.RUJI,
+    // BTC-BTC); the kit's resolver turns that into the bank denom, including the irregular
+    // ones (RUJI is `x/ruji`), which is what marketkit keys the token on.
+    override fun swapAssetTokenType(assetIdentifier: String): TokenType? {
+        // One identifier the kit cannot parse must not take the whole provider down with it.
+        val asset = try {
+            ThorAsset.fromString(assetIdentifier)
+        } catch (_: Exception) {
+            return null
+        }
+        val denom = ThorchainAssetResolver.denomFor(asset)
+        return if (denom == ThorchainAssetResolver.nativeDenom) TokenType.Native else TokenType.ThorchainAsset(denom)
+    }
+
     override fun addressHandlers(): List<IAddressHandler> =
         listOf(AddressHandlerThorchain(Network.Mainnet, BlockchainType.Thorchain))
 
     override fun addressValidator(token: Token): EnterAddressValidator = ThorchainAddressValidator(token)
 
-    @Composable
-    override fun SendScreen(args: ChainSendScreenArgs) {
-        val factory = SendThorchainModule.Factory(args.wallet, args.address, args.hideAddress, args.memo)
-        val sendThorchainViewModel = viewModel<SendThorchainViewModel>(factory = factory)
-        SendThorchainScreen(
-            args.title,
-            args.navigation,
-            sendThorchainViewModel,
-            args.amountInputModeViewModel,
-            args.sendEntryPointDestId,
-            args.amount,
-            args.memo,
-            riskyAddress = args.riskyAddress,
-        )
-    }
 }

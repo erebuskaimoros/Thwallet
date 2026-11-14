@@ -19,7 +19,12 @@ object WatchAddressModule {
         add(BlockchainType.Dogecoin)
         add(BlockchainType.ECash)
         add(BlockchainType.Stellar)
+        add(BlockchainType.Xrp)
+        add(BlockchainType.Near)
+        add(BlockchainType.Thorchain)
+        add(BlockchainType.Mayachain)
         add(BlockchainType.Monero)
+        add(BlockchainType.Solana)
     }
 
     class Factory : ViewModelProvider.Factory {

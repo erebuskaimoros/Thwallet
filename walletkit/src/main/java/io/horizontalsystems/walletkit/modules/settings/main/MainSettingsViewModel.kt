@@ -7,6 +7,7 @@ import io.horizontalsystems.walletkit.core.IAccountManager
 import io.horizontalsystems.walletkit.core.IBackupManager
 import io.horizontalsystems.walletkit.core.ITermsManager
 import io.horizontalsystems.walletkit.core.ViewModelUiState
+import io.horizontalsystems.walletkit.core.collectSafely
 import io.horizontalsystems.walletkit.core.providers.IAppConfigProvider
 import io.horizontalsystems.walletkit.modules.settings.main.MainSettingsModule.CounterType
 import io.horizontalsystems.walletkit.modules.walletconnect.WCManager
@@ -14,7 +15,6 @@ import io.horizontalsystems.walletkit.modules.walletconnect.WCSessionManager
 import io.horizontalsystems.subscriptions.core.AdvancedSearch
 import io.horizontalsystems.subscriptions.core.UserSubscriptionManager
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.reactive.asFlow
 
 class MainSettingsViewModel(
     private val backupManager: IBackupManager,
@@ -49,6 +49,11 @@ class MainSettingsViewModel(
     val walletConnectSupportState: WCManager.SupportState
         get() = wcManager.getWalletConnectSupportState()
 
+    // Donating means sending, so a watch account is not offered it. Only a known watch
+    // account hides the cell; while accounts are still loading there is nothing to hide.
+    private val donateEnabled: Boolean
+        get() = accountManager.activeAccount?.isWatchAccount != true
+
     private val appWebPageLink = appConfigProvider.appWebPageLink
     private val hasNonStandardAccount: Boolean
         get() = accountManager.hasNonStandardAccount
@@ -71,7 +76,7 @@ class MainSettingsViewModel(
 
     init {
         viewModelScope.launch {
-            backupManager.allBackedUpFlowable.asFlow().collect {
+            backupManager.allBackedUpFlow.collectSafely {
                 emitState()
             }
         }
@@ -83,6 +88,12 @@ class MainSettingsViewModel(
         }
         viewModelScope.launch {
             pinComponent.pinSetFlow.collect {
+                emitState()
+            }
+        }
+
+        viewModelScope.launch {
+            accountManager.activeAccountStateFlow.collect {
                 emitState()
             }
         }
@@ -123,6 +134,7 @@ class MainSettingsViewModel(
             wcCounterType = wcCounterType,
             showPremiumBanner = showPremiumBanner,
             hasSubscription = hasSubscription,
+            donateEnabled = donateEnabled,
         )
     }
 
@@ -150,4 +162,5 @@ data class MainSettingUiState(
     val wcCounterType: CounterType?,
     val showPremiumBanner: Boolean,
     val hasSubscription: Boolean,
+    val donateEnabled: Boolean,
 )

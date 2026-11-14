@@ -33,7 +33,9 @@ object TransactionInfoModule {
                 App.balanceHiddenManager.balanceHidden,
             )
             val factory = TransactionInfoViewItemFactory(
-                transactionSource.blockchain.type.resendable,
+                // Speeding up or cancelling replaces the transaction, which means signing a new
+                // one — out of reach for a watch account, however replaceable the chain is.
+                transactionSource.blockchain.type.resendable && !transactionSource.account.isWatchAccount,
                 transactionSource.blockchain.type
             )
 
@@ -75,7 +77,8 @@ val BlockchainType.resendable: Boolean
             EvmNetworkCatalog.blast,
             EvmNetworkCatalog.mantle,
             EvmNetworkCatalog.sei,
-            EvmNetworkCatalog.hyperEvm,
-            EvmNetworkCatalog.robinhood -> false
+            BlockchainType.RobinhoodChain,
+            BlockchainType.Arc,
+            EvmNetworkCatalog.hyperEvm -> false
             else -> true
         }

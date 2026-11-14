@@ -20,8 +20,8 @@ import io.horizontalsystems.walletkit.entities.BitcoinAddress
 import io.horizontalsystems.walletkit.entities.tokenType
 import io.horizontalsystems.walletkit.modules.address.AddressHandlerBase58
 import io.horizontalsystems.walletkit.modules.send.address.BitcoinAddressValidator
-import io.horizontalsystems.walletkit.modules.send.bitcoin.SendBitcoinModule.rbfSupported
-import io.horizontalsystems.walletkit.modules.send.bitcoin.SendBitcoinPluginService
+import io.horizontalsystems.walletkit.modules.send.bitcoin.rbfSupported
+import io.horizontalsystems.walletkit.modules.send.bitcoin.v2.BtcSendSettings
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -58,7 +58,7 @@ class DogecoinChainPolicyTest {
             ).isSupported,
         )
         assertFalse(BlockchainType.Dogecoin.rbfSupported)
-        assertFalse(SendBitcoinPluginService(BlockchainType.Dogecoin).isLockTimeEnabled)
+        assertFalse(BtcSendSettings.timeLockSupported(BlockchainType.Dogecoin))
 
         val handler = DogecoinChainPlugin().addressHandlers().single()
         assertTrue(handler is AddressHandlerBase58)

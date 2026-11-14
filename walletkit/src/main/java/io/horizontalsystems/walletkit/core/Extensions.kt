@@ -13,8 +13,12 @@ import io.horizontalsystems.marketkit.models.CoinCategory
 import io.horizontalsystems.marketkit.models.CoinInvestment
 import io.horizontalsystems.marketkit.models.CoinTreasury
 import io.horizontalsystems.marketkit.models.FullCoin
+import kotlinx.coroutines.CancellationException
+import java.math.BigInteger
 import kotlinx.coroutines.delay
 import java.util.Optional
+import kotlinx.coroutines.flow.Flow
+import timber.log.Timber
 
 val <T> Optional<T>.orNull: T?
     get() = when {
@@ -73,6 +77,22 @@ fun String.hexToByteArray(): ByteArray {
 fun ByteArray.toRawHexString(): String {
     return this.joinToString(separator = "") {
         it.toInt().and(0xff).toString(16).padStart(2, '0')
+    }
+}
+
+// BigInteger
+
+private const val PRIVATE_KEY_SIZE = 32
+
+// secp256k1 private key as raw 32-byte big-endian, the form iOS backups and key screens use;
+// BigInteger.toByteArray() yields 33 bytes (sign byte) or fewer than 32 (leading zeros)
+fun BigInteger.toPrivateKeyBytes(): ByteArray {
+    require(signum() >= 0 && bitLength() <= PRIVATE_KEY_SIZE * 8) { "Invalid private key" }
+    val raw = toByteArray()
+    return when {
+        raw.size == PRIVATE_KEY_SIZE -> raw
+        raw.size > PRIVATE_KEY_SIZE -> raw.copyOfRange(raw.size - PRIVATE_KEY_SIZE, raw.size)
+        else -> ByteArray(PRIVATE_KEY_SIZE - raw.size) + raw
     }
 }
 
@@ -159,20 +179,28 @@ val BlockchainType.blockTime : Long?
         BlockchainType.Fantom,
         BlockchainType.Base,
         BlockchainType.ZkSync,
+        BlockchainType.RobinhoodChain,
         EvmNetworkCatalog.blast,
         EvmNetworkCatalog.mantle,
             -> 2
 
+        // Arc produces sub-second blocks
+        BlockchainType.Arc,
         EvmNetworkCatalog.cronos,
         EvmNetworkCatalog.sei,
         EvmNetworkCatalog.hyperEvm,
-        EvmNetworkCatalog.robinhood,
             -> 1
 
         BlockchainType.Gnosis,
         BlockchainType.Stellar,
         BlockchainType.Ton,
             -> 5
+
+        // XRPL ledgers close every 3-5 seconds
+        BlockchainType.Xrp -> 4
+
+        // NEAR produces a block about every 0.6 seconds
+        BlockchainType.Near -> 1
 
         BlockchainType.Bitcoin,
         BlockchainType.BitcoinCash,
@@ -192,3 +220,27 @@ val BlockchainType.blockTime : Long?
 
         else -> null
     }
+
+/**
+ * Collects the flow, containing non-cancellation failures from both the upstream flow and
+ * the [action] handler, so one bad update or a failing source cannot cancel sibling
+ * coroutines in a shared scope. A handler failure keeps the collector alive; an upstream
+ * failure ends this collector only.
+ */
+suspend fun <T> Flow<T>.collectSafely(action: suspend (T) -> Unit) {
+    try {
+        collect { value ->
+            try {
+                action(value)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Timber.e(e, "collectSafely: update handler failed")
+            }
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Timber.e(e, "collectSafely: upstream flow failed")
+    }
+}

@@ -20,23 +20,25 @@ import io.horizontalsystems.walletkit.core.managers.RestoreSettings
 import io.horizontalsystems.walletkit.entities.AccountOrigin
 import io.horizontalsystems.walletkit.entities.AccountType
 import io.horizontalsystems.walletkit.entities.Wallet
+import io.horizontalsystems.walletkit.modules.settings.privacy.tor.TorStatus
 import io.horizontalsystems.monerokit.Balance
 import io.horizontalsystems.monerokit.MoneroKit
 import io.horizontalsystems.monerokit.Seed
 import io.horizontalsystems.monerokit.SyncState
 import io.horizontalsystems.monerokit.data.MoneroAccount
 import io.horizontalsystems.monerokit.data.Subaddress
-import io.reactivex.BackpressureStrategy
-import io.reactivex.Flowable
-import io.reactivex.subjects.PublishSubject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -58,19 +60,19 @@ class MoneroAdapter(
 
     private val coroutineScope = CoroutineScope(Dispatchers.Default)
 
-    private val balanceUpdatedSubject: PublishSubject<Unit> = PublishSubject.create()
-    private val balanceStateUpdatedSubject: PublishSubject<Unit> = PublishSubject.create()
+    private val _balanceUpdatedFlow = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    private val _balanceStateUpdatedFlow = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 
     override var balanceState: AdapterState = kit.syncStateFlow.value.toAdapterState()
 
     override val balanceData: BalanceData
         get() = activeAccountBalanceData
 
-    override val balanceUpdatedFlowable: Flowable<Unit>
-        get() = balanceUpdatedSubject.toFlowable(BackpressureStrategy.BUFFER)
+    override val balanceUpdatedFlow: Flow<Unit>
+        get() = _balanceUpdatedFlow
 
-    override val balanceStateUpdatedFlowable: Flowable<Unit>
-        get() = balanceStateUpdatedSubject.toFlowable(BackpressureStrategy.BUFFER)
+    override val balanceStateUpdatedFlow: Flow<Unit>
+        get() = _balanceStateUpdatedFlow
 
     override val receiveAddress: String
         get() = kit.receiveAddress(activeAccount)
@@ -83,7 +85,7 @@ class MoneroAdapter(
             _activeAccountFlow.value = value
             localStorage.setMoneroActiveAccount(walletAccountId, value)
             // poke balance collectors so screens re-read account-scoped data
-            balanceUpdatedSubject.onNext(Unit)
+            _balanceUpdatedFlow.tryEmit(Unit)
         }
 
     override val accountsFlow: StateFlow<List<MoneroAccountInfo>> = kit.accountsFlow
@@ -118,7 +120,7 @@ class MoneroAdapter(
                     activeAccount = 0
                 }
 
-                balanceUpdatedSubject.onNext(Unit)
+                _balanceUpdatedFlow.tryEmit(Unit)
             }
         }
 
@@ -126,7 +128,7 @@ class MoneroAdapter(
             kit.syncStateFlow.collect {
                 balanceState = it.toAdapterState()
 
-                balanceStateUpdatedSubject.onNext(Unit)
+                _balanceStateUpdatedFlow.tryEmit(Unit)
             }
         }
 
@@ -134,7 +136,19 @@ class MoneroAdapter(
             kit.allTransactionsFlow.collect(transactionsProvider::onTransactions)
         }
 
-        kit.start()
+        val torManager = App.torKitManager
+        if (torManager.isTorEnabled) {
+            // The wallet reads the Tor SOCKS port once, when it opens. Tor reports its port only
+            // once connected, and a restarted Tor listens on a new one, so reopen on every connect
+            coroutineScope.launch {
+                torManager.torStatusFlow.filter { it == TorStatus.Connected }.collect {
+                    kit.stop()
+                    kit.start()
+                }
+            }
+        } else {
+            kit.start()
+        }
 
         coroutineScope.launch {
             backgroundManager.stateFlow.collect {

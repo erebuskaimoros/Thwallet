@@ -52,6 +52,7 @@ fun HSTopAppBar(
     title: String,
     menuItems: List<IMenuItem>,
     onBack: (() -> Unit)?,
+    backIcon: Int?
 ) {
     TopAppBar(
         colors = TopAppBarDefaults.topAppBarColors(
@@ -83,7 +84,7 @@ fun HSTopAppBar(
                                 ),
                                 onClick = onBack
                             ),
-                        painter = painterResource(id = R.drawable.arrow_m_left_24),
+                        painter = painterResource(id = backIcon ?: R.drawable.arrow_m_left_24),
                         contentDescription = stringResource(Button_Back),
                         tint = ComposeAppTheme.colors.grey
                     )
@@ -218,7 +219,7 @@ fun MenuDropdown(menuItemDropdown: MenuItemDropdown)     {
                     ),
                     enabled = menuItemDropdown.enabled,
                     onClick = {
-                        if (menuItemDropdown.items.size == 1) {
+                        if (menuItemDropdown.items.size == 1 && !menuItemDropdown.alwaysShowMenu) {
                             menuItemDropdown.items.first().onClick.invoke()
                         } else {
                             expanded = true
@@ -226,7 +227,7 @@ fun MenuDropdown(menuItemDropdown: MenuItemDropdown)     {
                     }
                 ),
             painter = painterResource(menuItemDropdown.icon),
-            contentDescription = null,
+            contentDescription = menuItemDropdown.title.getString(),
             tint = menuItemDropdown.iconTint ?: Color.Unspecified
         )
     }
@@ -276,7 +277,8 @@ fun Preview_HSTopAppBar() {
                 ),
                 MenuItemLoading,
             ),
-            onBack = { }
+            onBack = { },
+            backIcon = null
         )
     }
 }

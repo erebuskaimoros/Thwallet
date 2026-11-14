@@ -1,20 +1,22 @@
 package io.horizontalsystems.walletkit.modules.addtoken
 
-import io.horizontalsystems.walletkit.core.chain.ChainRegistry
-import io.horizontalsystems.walletkit.core.App
+import io.horizontalsystems.marketkit.models.Blockchain
+import io.horizontalsystems.marketkit.models.BlockchainType
+import io.horizontalsystems.marketkit.models.Token
+import io.horizontalsystems.marketkit.models.TokenQuery
+import io.horizontalsystems.marketkit.models.TokenType
 import io.horizontalsystems.walletkit.core.IAccountManager
 import io.horizontalsystems.walletkit.core.ICoinManager
+import io.horizontalsystems.walletkit.core.chain.ChainRegistry
 import io.horizontalsystems.walletkit.core.managers.MarketKitWrapper
 import io.horizontalsystems.walletkit.core.managers.WalletManager
+import io.horizontalsystems.walletkit.core.blockedEip20Addresses
+import io.horizontalsystems.walletkit.core.nativeTokenContractAddress
 import io.horizontalsystems.walletkit.core.order
 import io.horizontalsystems.walletkit.core.stats.StatEvent
 import io.horizontalsystems.walletkit.core.stats.StatPage
 import io.horizontalsystems.walletkit.core.stats.stat
 import io.horizontalsystems.walletkit.entities.Wallet
-import io.horizontalsystems.marketkit.models.Blockchain
-import io.horizontalsystems.marketkit.models.BlockchainType
-import io.horizontalsystems.marketkit.models.Token
-import io.horizontalsystems.marketkit.models.TokenType
 
 class AddTokenService(
     private val coinManager: ICoinManager,
@@ -26,7 +28,6 @@ class AddTokenService(
     private val blockchainTypes = listOf(
         BlockchainType.Ethereum,
         BlockchainType.BinanceSmartChain,
-        BlockchainType.Tron,
         BlockchainType.Polygon,
         BlockchainType.Avalanche,
         BlockchainType.Gnosis,
@@ -35,6 +36,8 @@ class AddTokenService(
         BlockchainType.Optimism,
         BlockchainType.Base,
         BlockchainType.ZkSync,
+        BlockchainType.RobinhoodChain,
+        BlockchainType.Arc,
     ) + ChainRegistry.all.filter { it.supportsCustomTokens }.map { it.blockchainType }
 
     val blockchains = marketKit
@@ -46,15 +49,21 @@ class AddTokenService(
     suspend fun tokenInfo(blockchain: Blockchain, reference: String): TokenInfo? {
         if (reference.isEmpty()) return null
 
-        val blockchainService = when (blockchain.type) {
-            BlockchainType.Tron -> {
-                AddTronTokenBlockchainService.getInstance(blockchain)
-            }
-            else -> ChainRegistry[blockchain.type]?.addTokenBlockchainService(blockchain)
-                ?: throw TokenError.InvalidReference
-        }
+        val blockchainService = ChainRegistry[blockchain.type]?.addTokenBlockchainService(blockchain)
+            ?: throw TokenError.InvalidReference
 
         if (!blockchainService.isValid(reference)) throw TokenError.InvalidReference
+
+        if (reference.equals(blockchain.type.nativeTokenContractAddress, ignoreCase = true)) {
+            val nativeToken = coinManager.getToken(TokenQuery(blockchain.type, TokenType.Native))
+                ?: throw TokenError.NotFound
+            return TokenInfo(nativeToken, true)
+        }
+
+        // Other synthetic transfer-log addresses (Arc's 0xfff…fe) are not contracts at all.
+        if (blockchain.type.blockedEip20Addresses.any { it.equals(reference, ignoreCase = true) }) {
+            throw TokenError.InvalidReference
+        }
 
         val token = coinManager.getToken(blockchainService.tokenQuery(reference))
         if (token != null && token.type !is TokenType.Unsupported) {

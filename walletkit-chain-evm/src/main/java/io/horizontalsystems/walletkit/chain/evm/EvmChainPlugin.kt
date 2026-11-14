@@ -1,9 +1,9 @@
 package io.horizontalsystems.walletkit.chain.evm
 
 import androidx.compose.runtime.Composable
-import androidx.lifecycle.viewmodel.compose.viewModel
 import io.horizontalsystems.walletkit.R
 import io.horizontalsystems.walletkit.core.App
+import io.horizontalsystems.walletkit.core.chain.SendChainSettings
 import io.horizontalsystems.walletkit.core.IAdapter
 import io.horizontalsystems.walletkit.core.ISendEthereumAdapter
 import io.horizontalsystems.walletkit.core.ITransactionsAdapter
@@ -15,11 +15,11 @@ import io.horizontalsystems.walletkit.core.address.AddressChecker
 import io.horizontalsystems.walletkit.core.address.Eip20AddressValidator
 import io.horizontalsystems.walletkit.core.chain.ChainKeyRow
 import io.horizontalsystems.walletkit.core.chain.ChainPlugin
-import io.horizontalsystems.walletkit.core.chain.ChainSendScreenArgs
 import io.horizontalsystems.walletkit.core.managers.EvmKitManagerRegistry
 import io.horizontalsystems.walletkit.core.managers.evmTransactionSource
 import io.horizontalsystems.walletkit.core.managers.RestoreSettings
 import io.horizontalsystems.walletkit.core.stats.StatPage
+import io.horizontalsystems.walletkit.core.toPrivateKeyBytes
 import io.horizontalsystems.walletkit.core.toRawHexString
 import io.horizontalsystems.walletkit.entities.Account
 import io.horizontalsystems.walletkit.entities.AccountType
@@ -27,23 +27,22 @@ import io.horizontalsystems.walletkit.entities.Wallet
 import io.horizontalsystems.walletkit.entities.evmAddress
 import io.horizontalsystems.walletkit.modules.addtoken.AddEvmTokenBlockchainService
 import io.horizontalsystems.walletkit.modules.addtoken.AddTokenModule
+import io.horizontalsystems.walletkit.modules.address.AddressHandlerEvm
+import io.horizontalsystems.walletkit.modules.address.IAddressHandler
 import io.horizontalsystems.walletkit.modules.manageaccount.evmaddress.AddressPage
 import io.horizontalsystems.walletkit.modules.manageaccount.evmprivatekey.PrivateKeyPage
 import io.horizontalsystems.walletkit.modules.multiswap.action.ISwapProviderAction
 import io.horizontalsystems.walletkit.modules.multiswap.providers.EvmSwapHelper
-import io.horizontalsystems.walletkit.modules.multiswap.providers.IMultiSwapProvider
-import io.horizontalsystems.walletkit.modules.multiswap.providers.OneInchProvider
-import io.horizontalsystems.walletkit.modules.multiswap.providers.PancakeSwapV3Provider
-import io.horizontalsystems.walletkit.modules.multiswap.providers.UniswapV3Provider
 import io.horizontalsystems.walletkit.modules.multiswap.sendtransaction.AbstractSendTransactionService
+import io.horizontalsystems.walletkit.modules.multiswap.sendtransaction.SendTransactionData
 import io.horizontalsystems.walletkit.modules.multiswap.sendtransaction.SendTransactionServiceEvm
+import io.horizontalsystems.walletkit.modules.multiswap.sendtransaction.toEvmTransactionData
 import io.horizontalsystems.walletkit.modules.nav3.HSNavigation
 import io.horizontalsystems.walletkit.modules.nav3.HSPage
 import io.horizontalsystems.walletkit.modules.opencryptopay.OcpConfirmData
 import io.horizontalsystems.walletkit.modules.opencryptopay.OpenCryptoPayEvmConfirmationPage
-import io.horizontalsystems.walletkit.modules.send.evm.SendEvmModule
-import io.horizontalsystems.walletkit.modules.send.evm.SendEvmScreen
-import io.horizontalsystems.walletkit.modules.send.evm.SendEvmViewModel
+import io.horizontalsystems.walletkit.modules.send.address.EnterAddressValidator
+import io.horizontalsystems.walletkit.modules.send.address.EvmAddressValidator
 import io.horizontalsystems.walletkit.modules.transactionInfo.options.SpeedUpCancelType
 import io.horizontalsystems.walletkit.modules.transactionInfo.options.TransactionSpeedUpCancelPage
 import io.horizontalsystems.walletkit.modules.transactions.TransactionSource
@@ -54,13 +53,13 @@ import io.horizontalsystems.walletkit.modules.walletconnect.handler.WCHandlerEvm
 import io.horizontalsystems.walletkit.modules.walletconnect.request.WcRequestEvm
 import io.horizontalsystems.ethereumkit.api.jsonrpc.JsonRpc
 import io.horizontalsystems.ethereumkit.core.EthereumKit
+import io.horizontalsystems.ethereumkit.models.Address as EvmAddress
 import io.horizontalsystems.ethereumkit.core.signer.Signer
 import io.horizontalsystems.marketkit.models.Blockchain
 import io.horizontalsystems.marketkit.models.BlockchainType
 import io.horizontalsystems.marketkit.models.Token
 import io.horizontalsystems.marketkit.models.TokenType
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.rx2.asFlow
 import java.math.BigDecimal
 import java.math.BigInteger
 import kotlin.reflect.KClass
@@ -72,6 +71,16 @@ import kotlin.reflect.KClass
  * providers, key rows, error conversion) are contributed by the Ethereum instance only.
  */
 class EvmChainPlugin(override val blockchainType: BlockchainType) : ChainPlugin {
+
+    // EVM transfers carry no memo; the calldata comes from the kit via depositTransferData.
+    override fun sendTransactionData(
+        token: Token,
+        amount: BigDecimal,
+        address: String,
+        memo: String?,
+        extraInput: String?,
+        settings: SendChainSettings?,
+    ) = depositTransferData(token, amount, address)
 
     private val isFamilyAnchor get() = blockchainType == BlockchainType.Ethereum
 
@@ -121,7 +130,7 @@ class EvmChainPlugin(override val blockchainType: BlockchainType) : ChainPlugin 
     }
 
     override val walletReloadTrigger: Flow<*>
-        get() = evmKitManager.evmKitUpdatedObservable.asFlow()
+        get() = evmKitManager.evmKitUpdatedFlow
 
     override suspend fun refreshKit() {
         evmKitManager.evmKitWrapper?.evmKit?.refresh()
@@ -148,7 +157,7 @@ class EvmChainPlugin(override val blockchainType: BlockchainType) : ChainPlugin 
     override suspend fun eip20Allowance(token: Token, spenderAddress: String): BigDecimal? =
         EvmSwapHelper.getAllowance(token, spenderAddress)
 
-    override fun eip20ApproveAction(
+    override suspend fun eip20ApproveAction(
         allowance: BigDecimal?,
         amountIn: BigDecimal,
         spenderAddress: String,
@@ -158,12 +167,16 @@ class EvmChainPlugin(override val blockchainType: BlockchainType) : ChainPlugin 
     override fun sendTransactionService(token: Token): AbstractSendTransactionService =
         SendTransactionServiceEvm(blockchainType)
 
-    override fun swapProviders(): List<IMultiSwapProvider> =
-        if (isFamilyAnchor) {
-            listOf(OneInchProvider(), UniswapV3Provider, PancakeSwapV3Provider)
-        } else {
-            emptyList()
-        }
+    override fun depositTransferData(
+        token: Token,
+        amount: BigDecimal,
+        address: String,
+    ): SendTransactionData? {
+        val adapter = App.adapterManager.getAdapterForToken<ISendEthereumAdapter>(token) ?: return null
+        val transactionData = adapter.getTransactionData(amount, EvmAddress(address))
+
+        return SendTransactionData.Evm(transactionData.toEvmTransactionData(), gasLimit = null)
+    }
 
     override fun wcHandlers(): List<IWCHandler> =
         if (isFamilyAnchor) listOf(WCHandlerEvm()) else emptyList()
@@ -176,6 +189,10 @@ class EvmChainPlugin(override val blockchainType: BlockchainType) : ChainPlugin 
         WcRequestEvm(navigation)
         return true
     }
+
+    override fun addressHandlers(): List<IAddressHandler> = listOf(AddressHandlerEvm(blockchainType))
+
+    override fun addressValidator(token: Token): EnterAddressValidator = EvmAddressValidator()
 
     override fun blacklistAddressChecker(): AddressChecker? =
         if (isFamilyAnchor) Eip20BlacklistAddressChecker(Eip20AddressValidator(App.evmSyncSourceManager)) else null
@@ -276,28 +293,6 @@ class EvmChainPlugin(override val blockchainType: BlockchainType) : ChainPlugin 
         )
     }
 
-    @Composable
-    override fun SendScreen(args: ChainSendScreenArgs) {
-        val adapter = App.adapterManager.getAdapterForWallet<ISendEthereumAdapter>(args.wallet)
-            ?: throw IllegalArgumentException("SendEthereumAdapter is null")
-
-        val sendEvmViewModel = viewModel<SendEvmViewModel>(
-            factory = SendEvmModule.Factory(args.wallet, args.address, args.hideAddress, adapter)
-        )
-
-        SendEvmScreen(
-            title = args.title,
-            navigation = args.navigation,
-            amountInputModeViewModel = args.amountInputModeViewModel,
-            viewModel = sendEvmViewModel,
-            address = args.address,
-            wallet = args.wallet,
-            amount = args.amount,
-            hideAddress = args.hideAddress,
-            riskyAddress = args.riskyAddress,
-            sendEntryPointDestId = args.sendEntryPointDestId,
-        )
-    }
 
     override fun clearAccountData(accountId: String) {
         if (isFamilyAnchor) {
@@ -306,15 +301,7 @@ class EvmChainPlugin(override val blockchainType: BlockchainType) : ChainPlugin 
         }
     }
 
-    private fun toHexString(key: BigInteger): String {
-        return key.toByteArray().let {
-            if (it.size > 32) {
-                it.copyOfRange(1, it.size)
-            } else {
-                it
-            }.toRawHexString()
-        }
-    }
+    private fun toHexString(key: BigInteger): String = key.toPrivateKeyBytes().toRawHexString()
 }
 
 /** Consults the USDT/USDC/PYUSD blacklist and freeze contract methods for EVM tokens. */

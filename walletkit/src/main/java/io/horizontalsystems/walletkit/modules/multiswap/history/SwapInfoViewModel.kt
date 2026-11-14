@@ -14,19 +14,20 @@ import io.horizontalsystems.walletkit.core.coinIconUrl
 import io.horizontalsystems.walletkit.core.ethereum.EvmNetworkCatalog
 import io.horizontalsystems.walletkit.core.managers.CurrencyManager
 import io.horizontalsystems.walletkit.core.managers.MarketKitWrapper
+import io.horizontalsystems.walletkit.modules.contacts.ContactsRepository
 import io.horizontalsystems.walletkit.entities.SimulateFailSwapMode
+import io.horizontalsystems.walletkit.entities.toRawData
 import io.horizontalsystems.walletkit.helpers.DateHelper
-import io.horizontalsystems.walletkit.modules.multiswap.SwapTimeStatus
 import io.horizontalsystems.walletkit.modules.multiswap.formatDuration
 import io.horizontalsystems.walletkit.modules.multiswap.formatSwapTimeRange
 import io.horizontalsystems.walletkit.modules.multiswap.providers.MultiSwapProviderRegistry
 import io.horizontalsystems.walletkit.modules.multiswap.providers.SwapProviderType
 import io.horizontalsystems.walletkit.modules.multiswap.providers.UProvider
-import io.horizontalsystems.walletkit.modules.multiswap.swapTimeStatus
 import io.horizontalsystems.marketkit.models.BlockchainType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.rx2.await
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -38,6 +39,7 @@ class SwapInfoViewModel(
     private val marketKit: MarketKitWrapper,
     private val currencyManager: CurrencyManager,
     private val numberFormatter: IAppNumberFormatter,
+    private val contactsRepository: ContactsRepository,
 ) : ViewModelUiState<SwapInfoUiState>() {
 
     private var tokenInImageUrl: String = ""
@@ -55,14 +57,20 @@ class SwapInfoViewModel(
     private var providerName: String = ""
     private var formattedDate: String = ""
     private var status: SwapStatus = SwapStatus.Depositing
+    private var operation: SwapOperation = SwapOperation.Swap
     private var recipientAddress: String? = null
+    private var recipientContactName: String? = null
+    private var estimatedArrival: String? = null
     private var depositingTxUrl: String? = null
     private var swappingTxUrl: String? = null
     private var sendingTxUrl: String? = null
     private var isSingleTransactionSwap: Boolean = false
     private var pauseReason: PauseReason? = null
     private var swapTime: String? = null
-    private var swapTimeAttention: Boolean = false
+    private var rawData: String = ""
+    // The first load and the replayed update-flow load run at once; one at a time keeps every
+    // published state built from a single read of the record.
+    private val loadMutex = Mutex()
 
     override fun createState() = SwapInfoUiState(
         tokenInImageUrl = tokenInImageUrl,
@@ -78,17 +86,20 @@ class SwapInfoViewModel(
         fiatAmountIn = fiatAmountIn,
         fiatAmountOut = fiatAmountOut,
         providerName = providerName,
-        showProvider = status in listOf(SwapStatus.Refunded, SwapStatus.Failed, SwapStatus.ActionRequired),
+        showProvider = status in listOf(SwapStatus.Refunded, SwapStatus.Failed, SwapStatus.ActionRequired, SwapStatus.Expired),
         formattedDate = formattedDate,
         status = status,
+        operation = operation,
         recipientAddress = recipientAddress,
+        recipientContactName = recipientContactName,
+        estimatedArrival = estimatedArrival,
         depositingTxUrl = depositingTxUrl,
         swappingTxUrl = swappingTxUrl,
         sendingTxUrl = sendingTxUrl,
         isSingleTransactionSwap = isSingleTransactionSwap,
         pauseReason = pauseReason,
         swapTime = swapTime,
-        swapTimeAttention = swapTimeAttention,
+        rawData = rawData,
     )
 
     init {
@@ -102,8 +113,11 @@ class SwapInfoViewModel(
         RequestRefundDataLoader.load(recordId, swapRecordManager)
     }
 
-    private suspend fun loadData() {
-        val record = swapRecordManager.getById(recordId) ?: return
+    private suspend fun loadData() = loadMutex.withLock {
+        val record = swapRecordManager.getById(recordId) ?: return@withLock
+        // Published before the price lookups so "Copy Raw Data" has the record at once.
+        rawData = record.toRawData()
+        emitState()
         val currency = currencyManager.baseCurrency
         val timestampSeconds = record.timestamp / 1000
         val priceIn = fetchHistoricalPrice(record.tokenInCoinUid, currency.code, timestampSeconds)
@@ -130,7 +144,20 @@ class SwapInfoViewModel(
         if (BuildConfig.DEBUG && App.localStorage.simulateFailSwap == SimulateFailSwapMode.Local) {
             status = SwapStatus.ActionRequired
         }
-        recipientAddress = record.recipientAddress.takeIf { record.customRecipientAddress }
+        operation = SwapOperation.fromString(record.operation)
+        // A private send or CrossPay always has a real recipient the user typed; a plain swap
+        // only shows one when it differs from the user's own wallet.
+        recipientAddress = record.recipientAddress.takeIf { record.customRecipientAddress || operation != SwapOperation.Swap }
+        recipientContactName = recipientAddress?.let { address ->
+            contactsRepository
+                .getContactsFiltered(BlockchainType.fromUid(record.tokenOutBlockchainTypeUid), addressQuery = address)
+                .firstOrNull()
+                ?.name
+        }
+        // Meaningful only while funds are still moving.
+        estimatedArrival = record.estimatedTime
+            ?.takeIf { status in listOf(SwapStatus.Depositing, SwapStatus.Swapping, SwapStatus.Sending) }
+            ?.let { formatDuration(it) }
         depositingTxUrl = record.transactionHash?.let { buildTxUrl(record.tokenInBlockchainTypeUid, it) }
         swappingTxUrl = buildProviderTxUrl(record.providerId, record.transactionHash, record.depositAddress)
         sendingTxUrl = record.outboundTransactionHash?.let { buildTxUrl(record.tokenOutBlockchainTypeUid, it) }
@@ -146,11 +173,6 @@ class SwapInfoViewModel(
                 else -> "~${formatDuration(time)}"
             }
         }
-        swapTimeAttention =
-            swapTimeStatus(
-                record.estimatedTime,
-                MultiSwapProviderRegistry.providerType(record.providerId)
-            ) == SwapTimeStatus.Attention
 
         emitState()
     }
@@ -163,8 +185,8 @@ class SwapInfoViewModel(
     private suspend fun fetchHistoricalPrice(coinUid: String, currencyCode: String, timestampSeconds: Long): BigDecimal? {
         return try {
             marketKit.coinHistoricalPrice(coinUid, currencyCode, timestampSeconds)?.let { return it }
-            val rate = marketKit.coinHistoricalPriceSingle(coinUid, currencyCode, timestampSeconds).await()
-            if (rate.compareTo(BigDecimal.ZERO) != 0) rate else null
+            val rate = marketKit.coinHistoricalPriceSingle(coinUid, currencyCode, timestampSeconds)
+            if (rate != null && rate.compareTo(BigDecimal.ZERO) != 0) rate else null
         } catch (_: Throwable) {
             null
         }
@@ -178,8 +200,8 @@ class SwapInfoViewModel(
     }
 
     private fun buildProviderTxUrl(providerId: String, txHash: String?, depositAddress: String?): String? = when (providerId) {
-        THORCHAIN_PROVIDER_ID -> txHash?.let { "https://thorchain.net/tx/$it" }
-        MAYA_PROVIDER_ID -> txHash?.let { "https://www.mayascan.org/tx/$it" }
+        THORCHAIN_PROVIDER_ID, "u_${UProvider.ThorChain.id}" -> txHash?.let { "https://thorchain.net/tx/$it" }
+        MAYA_PROVIDER_ID, "u_${UProvider.Maya.id}" -> txHash?.let { "https://www.mayascan.org/tx/$it" }
         "u_${UProvider.Near.id}" -> depositAddress?.let { "https://explorer.near-intents.org/transactions/$it" }
         else -> null
     }
@@ -204,10 +226,14 @@ class SwapInfoViewModel(
             BlockchainType.Fantom -> "https://ftmscan.com/tx/$txHash"
             BlockchainType.Base -> "https://basescan.org/tx/$txHash"
             BlockchainType.ZkSync -> "https://era.zksync.network/tx/$txHash"
+            BlockchainType.RobinhoodChain -> "https://robinhoodchain.blockscout.com/tx/$txHash"
+            BlockchainType.Arc -> "https://arc.etherscan.io/tx/$txHash"
             BlockchainType.Solana -> "https://solscan.io/tx/$txHash"
             BlockchainType.Tron -> "https://tronscan.io/#/transaction/$txHash"
             BlockchainType.Ton -> "https://tonviewer.com/transaction/$txHash"
             BlockchainType.Stellar -> "https://stellar.expert/explorer/public/tx/$txHash"
+            BlockchainType.Xrp -> "https://livenet.xrpl.org/transactions/$txHash"
+            BlockchainType.Near -> "https://nearblocks.io/txns/$txHash"
             BlockchainType.Thorchain -> "https://runescan.io/tx/$txHash"
             BlockchainType.Mayachain -> "https://www.mayascan.org/tx/$txHash"
             BlockchainType.Zano -> "https://explorer.zano.org/transaction/$txHash"
@@ -216,7 +242,6 @@ class SwapInfoViewModel(
             EvmNetworkCatalog.mantle -> "https://mantlescan.xyz/tx/$txHash"
             EvmNetworkCatalog.sei -> "https://seiscan.io/tx/$txHash"
             EvmNetworkCatalog.hyperEvm -> "https://hyperevmscan.io/tx/$txHash"
-            EvmNetworkCatalog.robinhood -> "https://robinhoodchain.blockscout.com/tx/$txHash"
             is BlockchainType.Unsupported -> null
         }
 
@@ -229,6 +254,7 @@ class SwapInfoViewModel(
                 marketKit = App.marketKit,
                 currencyManager = App.currencyManager,
                 numberFormatter = App.numberFormatter,
+                contactsRepository = App.contactsRepository,
             ) as T
         }
     }
@@ -251,12 +277,17 @@ data class SwapInfoUiState(
     val showProvider: Boolean,
     val formattedDate: String,
     val status: SwapStatus,
+    val operation: SwapOperation,
     val recipientAddress: String?,
+    val recipientContactName: String?,
+    // Localized duration, present only while the operation is still in progress.
+    val estimatedArrival: String?,
     val depositingTxUrl: String?,
     val swappingTxUrl: String?,
     val sendingTxUrl: String?,
     val isSingleTransactionSwap: Boolean,
     val pauseReason: PauseReason?,
     val swapTime: String?,
-    val swapTimeAttention: Boolean,
+    // The stored record, column by column, for the toolbar's "Copy Raw Data".
+    val rawData: String = "",
 )

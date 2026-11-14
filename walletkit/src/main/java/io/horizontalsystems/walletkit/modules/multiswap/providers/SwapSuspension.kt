@@ -136,11 +136,13 @@ object CanonicalAssetId {
         EvmNetworkCatalog.mantle to "MANTLE",
         EvmNetworkCatalog.sei to "SEI",
         EvmNetworkCatalog.hyperEvm to "HYPEREVM",
-        EvmNetworkCatalog.robinhood to "ROBINHOOD",
+        BlockchainType.RobinhoodChain to "ROBINHOOD",
         BlockchainType.Tron to "TRON",
         BlockchainType.Solana to "SOL",
         BlockchainType.Ton to "TON",
         BlockchainType.Stellar to "XLM",
+        BlockchainType.Xrp to "XRP",
+        BlockchainType.Near to "NEAR",
         BlockchainType.Thorchain to "THOR",
     )
 
@@ -171,11 +173,13 @@ object CanonicalAssetId {
         EvmNetworkCatalog.mantle to "MNT",
         EvmNetworkCatalog.sei to "SEI",
         EvmNetworkCatalog.hyperEvm to "HYPE",
-        EvmNetworkCatalog.robinhood to "ETH",
+        BlockchainType.RobinhoodChain to "ETH",
         BlockchainType.Tron to "TRX",
         BlockchainType.Solana to "SOL",
         BlockchainType.Ton to "TON",
         BlockchainType.Stellar to "XLM",
+        BlockchainType.Xrp to "XRP",
+        BlockchainType.Near to "NEAR",
         BlockchainType.Thorchain to "RUNE",
     )
 
@@ -210,6 +214,11 @@ object CanonicalAssetId {
             // id as THORChain — which is where the asset actually lives.
             is TokenType.ThorchainAsset -> type.denom.uppercase()
 
+            // NEP-141 contract ids are lower-case account ids; upper-cased like EVM contracts.
+            is TokenType.Nep141 -> "$chain.${type.contractId.uppercase()}"
+
+            // No swap provider lists XRPL issued tokens yet.
+            is TokenType.XrpAsset,
             is TokenType.ZanoAsset,
             is TokenType.Unsupported,
                 -> null
@@ -263,8 +272,8 @@ data class SwapSuspensionIndex(
          * normalizing alone. Renaming the provider instead is not an option: its id is persisted
          * on every swap record and is what the history and refund flows look swaps up by.
          *
-         * This mapping is load-bearing rather than cosmetic — PancakeSwap is quoted by the app
-         * itself, so an unmatched id means no suspension for it can be enforced at all.
+         * PancakeSwap V3 is retired and never quoted, so the override only keeps its old records
+         * matched to the server's policy entry.
          */
         private val serverIdOverrides = mapOf(
             PANCAKE_V3_PROVIDER_ID.uppercase() to "PANCAKESWAP",

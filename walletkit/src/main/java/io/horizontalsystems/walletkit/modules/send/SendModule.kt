@@ -62,7 +62,8 @@ object SendModule {
 sealed class SendResult {
     object Sending : SendResult()
     class Sent(val transactionRecord: TransactionRecord? = null, val txHash: String? = null) : SendResult()
-    class Failed(val caution: HSCaution) : SendResult()
+    /** [expected]: a known failure whose message says what happened, not one to report to support. */
+    class Failed(val caution: HSCaution, val expected: Boolean = false) : SendResult()
 }
 
 object SendErrorFetchFeeRateFailed : HSCaution(
@@ -92,8 +93,13 @@ class SendErrorInsufficientBalance(coinCode: Any) : HSCaution(
     )
 )
 
-class SendErrorMinimumSendAmount(amount: Any) : HSCaution(
-    TranslatableString.ResString(R.string.Send_Error_MinimumAmount, amount)
+class SendErrorMinimumSendAmount(amount: BigDecimal, coinCode: String) : HSCaution(
+    TranslatableString.ResString(R.string.Send_Error_MinimumAmount_Title),
+    Type.Error,
+    TranslatableString.ResString(
+        R.string.Send_Error_MinimumAmount_Description,
+        App.numberFormatter.formatCoinFull(amount, coinCode, amount.scale().coerceAtLeast(0))
+    )
 )
 
 class SendErrorMaximumSendAmount(amount: Any): HSCaution(

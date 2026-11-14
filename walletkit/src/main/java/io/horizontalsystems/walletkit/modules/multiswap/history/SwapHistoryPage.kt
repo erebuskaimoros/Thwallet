@@ -92,14 +92,16 @@ fun SwapHistoryScreen(navigation: HSNavigation) {
                         )
                     }
                     items(swaps, key = { it.id }) { item ->
-                        SwapHistoryCell(
-                            item = item,
-                            onClick = {
-                                navigation.slideFromRight(
-                                    SwapInfoPage(SwapInfoPage.Input(item.id)),
-                                )
-                            },
-                        )
+                        val onClick = {
+                            navigation.slideFromRight(
+                                SwapInfoPage(SwapInfoPage.Input(item.id)),
+                            )
+                        }
+                        when (item.operation) {
+                            SwapOperation.Swap -> SwapHistoryCell(item = item, onClick = onClick)
+                            SwapOperation.PrivateSend,
+                            SwapOperation.CrossPay -> OperationHistoryCell(item = item, onClick = onClick)
+                        }
                     }
                 }
                 item { VSpacer(32.dp) }
@@ -168,6 +170,76 @@ private fun SwapHistoryCell(item: SwapHistoryViewItem, onClick: () -> Unit) {
     }
 }
 
+/**
+ * A private send or CrossPay row: the product name and its current stage instead of a
+ * token pair. Only the spent side is known to the user as "theirs", so the amount reads as
+ * an outgoing value.
+ */
+@Composable
+private fun OperationHistoryCell(item: SwapHistoryViewItem, onClick: () -> Unit) {
+    val inProgress = item.status in listOf(SwapStatus.Depositing, SwapStatus.Swapping, SwapStatus.Sending)
+    Column {
+        CellPrimary(
+            left = {
+                SwapCoinIcon(
+                    imageUrl = item.tokenInImageUrl,
+                    alternativeImageUrl = item.tokenInAlternativeImageUrl,
+                    showSpinner = inProgress,
+                )
+            },
+            middle = {
+                CellMiddleInfo(
+                    subtitle = operationTitle(item.operation).hs(ComposeAppTheme.colors.leah),
+                    description = statusText(item.status).hs(color = statusTextColor(item.status)),
+                )
+            },
+            right = {
+                Column(horizontalAlignment = Alignment.End) {
+                    subheadSB_leah(
+                        text = "-${item.amountIn}",
+                        textAlign = TextAlign.End,
+                    )
+                    item.fiatAmountIn?.let {
+                        captionSB_grey(
+                            text = "-$it",
+                            textAlign = TextAlign.End,
+                        )
+                    }
+                }
+            },
+            onClick = onClick,
+        )
+        HsDivider()
+    }
+}
+
+@Composable
+fun operationTitle(operation: SwapOperation): String = when (operation) {
+    SwapOperation.Swap -> stringResource(R.string.SwapInfo_Title)
+    SwapOperation.PrivateSend -> stringResource(R.string.PrivateSend_Toggle_Title)
+    SwapOperation.CrossPay -> stringResource(R.string.CrossPay_Info_Title)
+}
+
+@Composable
+private fun statusText(status: SwapStatus): String = when (status) {
+    SwapStatus.Depositing -> stringResource(R.string.SwapHistory_StatusDepositing)
+    SwapStatus.Swapping -> stringResource(R.string.SwapHistory_StatusSwapping)
+    SwapStatus.Sending -> stringResource(R.string.SwapHistory_StatusSending)
+    SwapStatus.Completed -> stringResource(R.string.SwapInfo_StatusCompleted)
+    SwapStatus.Refunded -> stringResource(R.string.SwapInfo_StatusRefunded)
+    SwapStatus.Failed -> stringResource(R.string.SwapInfo_StatusFailed)
+    SwapStatus.ActionRequired -> stringResource(R.string.SwapHistory_StatusActionRequired)
+    SwapStatus.Expired -> stringResource(R.string.SwapInfo_StatusExpired)
+}
+
+@Composable
+private fun statusTextColor(status: SwapStatus): Color = when (status) {
+    SwapStatus.Completed -> ComposeAppTheme.colors.remus
+    SwapStatus.Failed,
+    SwapStatus.ActionRequired -> ComposeAppTheme.colors.lucian
+    else -> ComposeAppTheme.colors.grey
+}
+
 @Composable
 private fun SwapCoinIcon(imageUrl: String, alternativeImageUrl: String?, showSpinner: Boolean) {
     val leah = ComposeAppTheme.colors.leah
@@ -232,6 +304,8 @@ private fun statusIconAndTint(status: SwapStatus): Pair<Int, Color> = when (stat
     SwapStatus.Refunded -> Pair(R.drawable.ic_arrow_return_20, ComposeAppTheme.colors.grey)
     SwapStatus.Failed,
     SwapStatus.ActionRequired -> Pair(R.drawable.ic_warning_filled_20, ComposeAppTheme.colors.redL)
+    // Nothing was lost: the order lapsed unfunded, so the warning is muted rather than red.
+    SwapStatus.Expired -> Pair(R.drawable.ic_warning_filled_20, ComposeAppTheme.colors.grey)
 }
 
 @Preview
@@ -253,6 +327,7 @@ private fun SwapHistoryCellPreview() {
             fiatAmountIn = "$2,850.00",
             fiatAmountOut = "$2,831.40",
             status = SwapStatus.Completed,
+            operation = SwapOperation.Swap,
             formattedDate = "March 17",
         ),
         SwapHistoryViewItem(
@@ -266,6 +341,7 @@ private fun SwapHistoryCellPreview() {
             fiatAmountIn = "$500.00",
             fiatAmountOut = null,
             status = SwapStatus.Swapping,
+            operation = SwapOperation.Swap,
             formattedDate = "March 17",
         ),
         SwapHistoryViewItem(
@@ -279,6 +355,7 @@ private fun SwapHistoryCellPreview() {
             fiatAmountIn = "$6,720.00",
             fiatAmountOut = "$6,720.00",
             status = SwapStatus.Refunded,
+            operation = SwapOperation.Swap,
             formattedDate = "March 16",
         ),
         SwapHistoryViewItem(
@@ -292,13 +369,45 @@ private fun SwapHistoryCellPreview() {
             fiatAmountIn = "$950.00",
             fiatAmountOut = null,
             status = SwapStatus.Failed,
+            operation = SwapOperation.Swap,
+            formattedDate = "March 16",
+        ),
+        SwapHistoryViewItem(
+            id = 5,
+            tokenInImageUrl = usdtUrl,
+            tokenOutImageUrl = usdtUrl,
+            tokenInAlternativeImageUrl = null,
+            tokenOutAlternativeImageUrl = null,
+            amountIn = "10,536.84 USDT",
+            amountOut = "10,500 USDT",
+            fiatAmountIn = "$10,532.62",
+            fiatAmountOut = "$10,498.12",
+            status = SwapStatus.Depositing,
+            operation = SwapOperation.PrivateSend,
+            formattedDate = "March 16",
+        ),
+        SwapHistoryViewItem(
+            id = 6,
+            tokenInImageUrl = btcUrl,
+            tokenOutImageUrl = usdtUrl,
+            tokenInAlternativeImageUrl = null,
+            tokenOutAlternativeImageUrl = null,
+            amountIn = "0.1137 BTC",
+            amountOut = "10,536.8 USDT",
+            fiatAmountIn = "$10,498.12",
+            fiatAmountOut = "$10,498.12",
+            status = SwapStatus.Completed,
+            operation = SwapOperation.CrossPay,
             formattedDate = "March 16",
         ),
     )
     ComposeAppTheme(darkTheme = false) {
         Column {
             items.forEach { item ->
-                SwapHistoryCell(item = item, onClick = {})
+                when (item.operation) {
+                    SwapOperation.Swap -> SwapHistoryCell(item = item, onClick = {})
+                    else -> OperationHistoryCell(item = item, onClick = {})
+                }
             }
         }
     }

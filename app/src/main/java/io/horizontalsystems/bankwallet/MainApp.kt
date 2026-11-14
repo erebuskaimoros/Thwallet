@@ -2,6 +2,7 @@ package io.horizontalsystems.bankwallet
 
 import io.horizontalsystems.bankwallet.core.providers.AppConfigProvider
 import io.horizontalsystems.walletkit.chain.evm.EvmChainPlugin
+import io.horizontalsystems.walletkit.chain.tron.TronChainPlugin
 import io.horizontalsystems.walletkit.core.managers.EvmBlockchainManager
 import io.horizontalsystems.walletkit.chain.bitcoin.BitcoinCashChainPlugin
 import io.horizontalsystems.walletkit.chain.bitcoin.BitcoinChainPlugin
@@ -12,6 +13,8 @@ import io.horizontalsystems.walletkit.chain.bitcoin.LitecoinChainPlugin
 import io.horizontalsystems.walletkit.chain.monero.MoneroChainPlugin
 import io.horizontalsystems.walletkit.chain.zano.ZanoChainPlugin
 import io.horizontalsystems.walletkit.chain.solana.SolanaChainPlugin
+import io.horizontalsystems.walletkit.chain.near.NearChainPlugin
+import io.horizontalsystems.walletkit.chain.xrp.XrpChainPlugin
 import io.horizontalsystems.walletkit.chain.stellar.StellarChainPlugin
 import io.horizontalsystems.walletkit.chain.thorchain.MayachainChainPlugin
 import io.horizontalsystems.walletkit.chain.thorchain.ThorchainChainPlugin
@@ -35,6 +38,8 @@ class MainApp : App() {
         EvmBlockchainManager.blockchainTypes.forEach { blockchainType ->
             ChainRegistry.register(EvmChainPlugin(blockchainType))
         }
+        // Tron right after the EVM chains keeps its pre-plugin position in BlockchainType.supported.
+        ChainRegistry.register(TronChainPlugin())
         ChainRegistry.register(BitcoinChainPlugin())
         ChainRegistry.register(BitcoinCashChainPlugin())
         ChainRegistry.register(ECashChainPlugin())
@@ -42,12 +47,14 @@ class MainApp : App() {
         ChainRegistry.register(DashChainPlugin())
         ChainRegistry.register(DogecoinChainPlugin())
         // Registration order defines the tail of BlockchainType.supported:
-        // bitcoin, bitcoinCash, ecash, litecoin, dash, dogecoin, monero, zano, zcash, solana, stellar, ton.
+        // bitcoin, bitcoinCash, ecash, litecoin, dash, dogecoin, monero, zano, zcash, solana, stellar, xrp, ton.
         ChainRegistry.register(MoneroChainPlugin({ App.instance }, { App.moneroNodeManager }))
         ChainRegistry.register(ZanoChainPlugin({ App.zanoNodeManager }, { App.backgroundManager }))
         ChainRegistry.register(ZcashChainPlugin({ App.instance }, { App.zcashEndpointManager }, { App.localStorage }))
-        ChainRegistry.register(SolanaChainPlugin({ BuildConfig.SOLANA_ALCHEMY_API_KEY }, { BuildConfig.SOLANA_JUPITER_API_KEY }))
+        ChainRegistry.register(SolanaChainPlugin({ BuildConfig.ALCHEMY_API_KEY }, { BuildConfig.SOLANA_JUPITER_API_KEY }))
         ChainRegistry.register(StellarChainPlugin())
+        ChainRegistry.register(XrpChainPlugin())
+        ChainRegistry.register(NearChainPlugin())
         ChainRegistry.register(TonChainPlugin())
         ChainRegistry.register(ThorchainChainPlugin())
         ChainRegistry.register(MayachainChainPlugin())

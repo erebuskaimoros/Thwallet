@@ -32,6 +32,7 @@ import io.horizontalsystems.walletkit.core.stats.StatPage
 import io.horizontalsystems.walletkit.core.stats.stat
 import io.horizontalsystems.walletkit.modules.multiswap.providers.SwapProviderType
 import io.horizontalsystems.walletkit.modules.multiswap.ui.RiskScore
+import io.horizontalsystems.walletkit.modules.multiswap.ui.routeScore
 import io.horizontalsystems.walletkit.modules.nav3.HSNavigation
 import io.horizontalsystems.walletkit.modules.nav3.HSPage
 import io.horizontalsystems.walletkit.ui.compose.ComposeAppTheme
@@ -197,12 +198,14 @@ private fun SwapSelectProviderScreenInner(
                                         horizontalAlignment = Alignment.End,
                                         verticalArrangement = spacedBy(3.dp)
                                     ) {
-                                        RiskScore(
-                                            riskLevel = provider.riskLevel,
-                                            modifier = Modifier.clickable {
-                                                onBadgeClick.invoke()
-                                            },
-                                        )
+                                        routeScore(provider.id)?.let { riskLevel ->
+                                            RiskScore(
+                                                riskLevel = riskLevel,
+                                                modifier = Modifier.clickable {
+                                                    onBadgeClick.invoke()
+                                                },
+                                            )
+                                        }
                                         Text(
                                             text = viewItem.estimationTime?.let {
                                                 formatSwapTime(it, provider.type)
@@ -311,20 +314,7 @@ private fun SwapSelectProviderScreenPreview() {
     ComposeAppTheme(darkTheme = false) {
         SwapSelectProviderScreenInner(
             onClickClose = {},
-            quotes = listOf(
-//                SwapProviderQuote(
-//                    SwapMainModule.OneInchProvider,
-//                    quote.amountOut,
-//                    quote.fee,
-//                    quote.fields
-//                ),
-//                SwapProviderQuote(
-//                    SwapMainModule.UniswapV3Provider,
-//                    quote.amountOut,
-//                    quote.fee,
-//                    quote.fields
-//                ),
-            ),
+            quotes = listOf(),
             currentQuote = null,
             sortType = ProviderSortType.BestPrice,
             onSortTypeChange = {},

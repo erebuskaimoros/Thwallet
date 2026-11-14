@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -32,7 +33,6 @@ import io.horizontalsystems.walletkit.modules.nav3.HSPage
 import io.horizontalsystems.walletkit.ui.compose.ComposeAppTheme
 import io.horizontalsystems.walletkit.ui.compose.Select
 import io.horizontalsystems.walletkit.ui.compose.components.AlertGroup
-import io.horizontalsystems.walletkit.ui.compose.components.ButtonPrimaryYellow
 import io.horizontalsystems.walletkit.ui.compose.components.ButtonSecondaryWithIcon
 import io.horizontalsystems.walletkit.ui.compose.components.HFillSpacer
 import io.horizontalsystems.walletkit.ui.compose.components.HSpacer
@@ -45,6 +45,7 @@ import io.horizontalsystems.walletkit.ui.compose.components.cell.CellUniversal
 import io.horizontalsystems.walletkit.ui.compose.components.cell.SectionUniversalLawrence
 import io.horizontalsystems.walletkit.ui.compose.components.subhead1_grey
 import kotlinx.serialization.Serializable
+import io.horizontalsystems.walletkit.uiv3.components.controls.HSButton
 
 @Serializable
 data object RoiSelectCoinsPage : HSPage() {
@@ -76,7 +77,7 @@ fun RoiSelectCoinsScreen(navigation: HSNavigation) {
         },
         bottomBar = {
             ButtonsGroupWithShade {
-                ButtonPrimaryYellow(
+                HSButton(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(start = 16.dp, end = 16.dp),
@@ -91,7 +92,11 @@ fun RoiSelectCoinsScreen(navigation: HSNavigation) {
         },
         backgroundColor = ComposeAppTheme.colors.tyler,
     ) {
-        var dialog: PeriodSelectorDialog? by rememberSaveable { mutableStateOf(null) }
+        // remember, not rememberSaveable: PeriodSelectorDialog is not Bundleable, so saving it
+        // threw IllegalStateException on every backgrounding while the picker was open. The state
+        // is a transient picker that is cleared on select or dismiss and read nowhere else, so
+        // letting it close when the process goes away is the behaviour we want anyway.
+        var dialog: PeriodSelectorDialog? by remember { mutableStateOf(null) }
 
         Column(
             modifier = Modifier.padding(it),

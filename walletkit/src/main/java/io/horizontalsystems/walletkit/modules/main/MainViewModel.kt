@@ -30,15 +30,16 @@ import io.horizontalsystems.walletkit.modules.balance.OpenSendTokenSelect
 import io.horizontalsystems.walletkit.modules.coin.CoinPage
 import io.horizontalsystems.walletkit.modules.main.MainModule.MainNavigation
 import io.horizontalsystems.walletkit.modules.market.platform.MarketPlatformPage
-import io.horizontalsystems.walletkit.modules.market.topplatforms.Platform
+import io.horizontalsystems.walletkit.modules.pin.core.LockGate
 import io.horizontalsystems.walletkit.modules.walletconnect.WCManager
 import io.horizontalsystems.walletkit.modules.walletconnect.WCSessionManager
 import io.horizontalsystems.walletkit.modules.walletconnect.list.WCListPage
 import io.horizontalsystems.marketkit.models.TokenType
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.reactive.asFlow
 import timber.log.Timber
 
 class MainViewModel(
@@ -53,12 +54,14 @@ class MainViewModel(
     wcSessionManager: WCSessionManager,
     private val wcManager: WCManager,
     private val networkManager: INetworkManager,
-    private val actionCompletedDelegate: ActionCompletedDelegate
+    private val actionCompletedDelegate: ActionCompletedDelegate,
+    private val lockGate: LockGate,
 ) : ViewModelUiState<MainModule.UiState>() {
 
     private var wcPendingRequestsCount = 0
     private var marketsTabEnabled = localStorage.marketsTabEnabledFlow.value
     private var transactionsEnabled = isTransactionsTabEnabled()
+    private var swapTabEnabled = isSwapTabEnabled()
     private var settingsBadge: MainModule.BadgeType? = null
     private val launchPage: LaunchPage
         get() = localStorage.launchPage ?: LaunchPage.Auto
@@ -76,21 +79,16 @@ class MainViewModel(
         }
 
     private val items: List<MainNavigation>
-        get() = if (marketsTabEnabled) {
-            listOf(
-                MainNavigation.Market,
-                MainNavigation.Balance,
-                MainNavigation.Swap,
-//                MainNavigation.Transactions,
-                MainNavigation.Settings,
-            )
-        } else {
-            listOf(
-                MainNavigation.Balance,
-                MainNavigation.Swap,
-//                MainNavigation.Transactions,
-                MainNavigation.Settings,
-            )
+        get() = buildList {
+            if (marketsTabEnabled) {
+                add(MainNavigation.Market)
+            }
+            add(MainNavigation.Balance)
+            if (swapTabEnabled) {
+                add(MainNavigation.Swap)
+            }
+//            add(MainNavigation.Transactions)
+            add(MainNavigation.Settings)
         }
     private val selectedTabItem: MainNavigation
         get() = mainNavItems.firstOrNull { it.selected }?.mainNavItem
@@ -105,8 +103,21 @@ class MainViewModel(
     private var wcSupportState: WCManager.SupportState? = null
     private var torEnabled = localStorage.torEnabled
     private var openSendTokenSelect: OpenSendTokenSelect? = null
+    private var snapTabSwitch = false
+    private var showChangeWalletWarning = false
+
+    // App locked while a public screen was showing: fall back to the Market tab so the user
+    // keeps browsing instead of getting the keypad. The stored launch tab is left untouched.
+    private val restrictedLockListener: () -> Unit = {
+        if (items.contains(MainNavigation.Market)) {
+            selectTab(MainNavigation.Market)
+        }
+    }
 
     init {
+        reportSelectedTab()
+        lockGate.addRestrictedLockListener(restrictedLockListener)
+
         viewModelScope.launch {
             localStorage.marketsTabEnabledFlow.collect { enabled ->
                 marketsTabEnabled = enabled
@@ -135,7 +146,7 @@ class MainViewModel(
         }
 
         viewModelScope.launch {
-            backupManager.allBackedUpFlowable.asFlow().collect {
+            backupManager.allBackedUpFlow.collect {
                 updateSettingsBadge()
             }
         }
@@ -145,7 +156,7 @@ class MainViewModel(
             }
         }
         viewModelScope.launch {
-            accountManager.accountsFlowable.asFlow().collect {
+            accountManager.accountsFlow.collect {
                 updateTransactionsTabEnabled()
                 updateSettingsBadge()
             }
@@ -155,6 +166,7 @@ class MainViewModel(
             accountManager.activeAccountStateFlow.collect {
                 if (it is ActiveAccountState.ActiveAccount) {
                     updateTransactionsTabEnabled()
+                    updateSwapTabEnabled()
                 }
             }
         }
@@ -172,6 +184,15 @@ class MainViewModel(
         updateTransactionsTabEnabled()
     }
 
+    override fun onCleared() {
+        lockGate.removeRestrictedLockListener(restrictedLockListener)
+        super.onCleared()
+    }
+
+    private fun reportSelectedTab() {
+        lockGate.selectedTab = selectedTabItem
+    }
+
     override fun createState() = MainModule.UiState(
         deeplinkPage = deeplinkPage,
         mainNavItems = mainNavItems,
@@ -182,9 +203,17 @@ class MainViewModel(
         torEnabled = torEnabled,
         openSend = openSendTokenSelect,
         selectedTabItem = selectedTabItem,
+        snapTabSwitch = snapTabSwitch,
+        showChangeWalletWarning = showChangeWalletWarning,
     )
 
     private fun isTransactionsTabEnabled(): Boolean = !accountManager.isAccountsEmpty
+
+    // Hiding a tab fails open, unlike the deeplink guard, which waits for the account and then
+    // refuses. Accounts load after this view model is built
+    // (App.startTasks -> initDefaultPinLevel), so treating "not loaded yet" as a watch account
+    // would drop the tab from the first frame and shift the bar under the user once it arrives.
+    private fun isSwapTabEnabled(): Boolean = accountManager.activeAccount?.isWatchAccount != true
 
 
     fun whatsNewShown() {
@@ -212,18 +241,37 @@ class MainViewModel(
     }
 
     fun onSelect(mainNavItem: MainNavigation) {
-        val newIndex = items.indexOf(mainNavItem)
-
-        if (newIndex == selectedTabIndex) {
+        if (items.indexOf(mainNavItem) == selectedTabIndex) {
             return
         }
 
+        if (lockGate.isLocked && !lockGate.isTabAccessibleWhileLocked(mainNavItem)) {
+            // Wallet tab tapped while browsing Market locked: ask for the PIN, then switch.
+            lockGate.requireUnlocked { select(mainNavItem) }
+            return
+        }
+
+        select(mainNavItem)
+    }
+
+    private fun select(mainNavItem: MainNavigation) {
         if (mainNavItem != MainNavigation.Settings) {
             currentMainTab = mainNavItem
         }
+        selectTab(mainNavItem)
+    }
 
+    private fun selectTab(mainNavItem: MainNavigation) {
+        val newIndex = items.indexOf(mainNavItem)
+        if (newIndex < 0 || newIndex == selectedTabIndex) {
+            return
+        }
+        // A tab switched while locked (lock fallback, widget deeplink) must not animate:
+        // the outgoing wallet tab would stay composed for the crossfade's duration.
+        snapTabSwitch = lockGate.isLocked
         updateSelectedTab(selectedTabIndex, newIndex)
         selectedTabIndex = newIndex
+        reportSelectedTab()
         emitState()
     }
 
@@ -245,8 +293,18 @@ class MainViewModel(
         syncNavigation()
     }
 
+    private fun updateSwapTabEnabled() {
+        swapTabEnabled = isSwapTabEnabled()
+        syncNavigation()
+    }
+
     fun wcSupportStateHandled() {
         wcSupportState = null
+        emitState()
+    }
+
+    fun changeWalletWarningShown() {
+        showChangeWalletWarning = false
         emitState()
     }
 
@@ -313,7 +371,10 @@ class MainViewModel(
             else -> getLaunchTab()
         }
 
-        return items.indexOf(tab)
+        // The stored tab can be one that is currently hidden — Swap, once the active account
+        // is a watch account — so fall back to Balance rather than leaving nothing selected.
+        val index = items.indexOf(tab)
+        return if (index >= 0) index else items.indexOf(MainNavigation.Balance).coerceAtLeast(0)
     }
 
     private fun getLaunchTab(): MainNavigation = when (launchPage) {
@@ -344,29 +405,22 @@ class MainViewModel(
                 }
             }
 
-            deeplinkString.startsWith("$deeplinkScheme:") -> {
-                val uid = deepLink.getQueryParameter("uid")
-                when {
-                    deeplinkString.contains("coin-page") -> {
-                        uid?.let {
-                            deeplinkPage = DeeplinkPage(CoinPage(CoinPage.Input(it)))
+            MarketDeepLinks.isMarketDeepLink(deeplinkString, deeplinkScheme) -> {
+                // The page itself is opened at the navigation root (see Nav3) so it shows
+                // right away; only the tab behind it is switched here, so going back lands on
+                // Market and the page stays browsable while locked.
+                when (val page = MarketDeepLinks.page(deepLink, deeplinkScheme)) {
+                    is CoinPage -> stat(page = StatPage.Widget, event = StatEvent.OpenCoin(page.input.coinUid))
+                    is MarketPlatformPage -> stat(page = StatPage.Widget, event = StatEvent.Open(StatPage.TopPlatform))
+                    else -> {}
+                }
 
-                            stat(page = StatPage.Widget, event = StatEvent.OpenCoin(it))
-                        }
-                    }
-
-                    deeplinkString.contains("top-platforms") -> {
-                        val title = deepLink.getQueryParameter("title")
-                        if (title != null && uid != null) {
-                            val platform = Platform(uid, title)
-                            deeplinkPage = DeeplinkPage(MarketPlatformPage(platform))
-
-                            stat(
-                                page = StatPage.Widget,
-                                event = StatEvent.Open(StatPage.TopPlatform)
-                            )
-                        }
-                    }
+                if (lockGate.isLocked) {
+                    // The app may be sitting on the keypad because of a pending unlock request
+                    // (e.g. a wallet tab was tapped earlier). The user now asked for public
+                    // content, so drop that request — otherwise the keypad would keep covering
+                    // the page this deeplink opens.
+                    lockGate.cancelUnlockRequest()
                 }
 
                 tab = MainNavigation.Market
@@ -417,6 +471,7 @@ class MainViewModel(
 
         if (structureChanged) {
             mainNavItems = newNavItems
+            reportSelectedTab()
             emitState()
         }
     }
@@ -447,6 +502,7 @@ class MainViewModel(
         syncNavigation()
     }
 
+    /** Dismisses a keypad shown for a deferred action and drops that action. */
     fun deeplinkPageHandled() {
         deeplinkPage = null
         emitState()
@@ -496,21 +552,38 @@ class MainViewModel(
             || deeplinkString.startsWith("dogecoin:")
         ) {
             AddressUriParser.addressUri(deeplinkString)?.let { addressUri ->
-                val allowedBlockchainTypes = addressUri.allowedBlockchainTypes
-                var allowedTokenTypes: List<TokenType>? = null
-                addressUri.value<String>(AddressUri.Field.TokenUid)?.let { uid ->
-                    TokenType.fromId(uid)?.let { tokenType ->
-                        allowedTokenTypes = listOf(tokenType)
-                    }
-                }
+                viewModelScope.launch {
+                    // A payment link normally cold-starts the app, and accounts load after this
+                    // view model is built, so the answer has to be awaited rather than read: a
+                    // not-yet-loaded account would refuse a link it can perfectly well handle.
+                    val account = accountManager.activeAccountStateFlow
+                        .filterIsInstance<ActiveAccountState.ActiveAccount>()
+                        .first()
+                        .account
 
-                openSendTokenSelect = OpenSendTokenSelect(
-                    blockchainTypes = allowedBlockchainTypes,
-                    tokenTypes = allowedTokenTypes,
-                    address = addressUri.address,
-                    amount = addressUri.amount
-                )
-                emitState()
+                    // A payment link asks for a signature, so a watch account must not be taken
+                    // to the send flow. Nothing can be hidden here, so it is told to switch.
+                    if (account == null || account.isWatchAccount) {
+                        showChangeWalletWarning = true
+                        emitState()
+                        return@launch
+                    }
+
+                    var allowedTokenTypes: List<TokenType>? = null
+                    addressUri.value<String>(AddressUri.Field.TokenUid)?.let { uid ->
+                        TokenType.fromId(uid)?.let { tokenType ->
+                            allowedTokenTypes = listOf(tokenType)
+                        }
+                    }
+
+                    openSendTokenSelect = OpenSendTokenSelect(
+                        blockchainTypes = addressUri.allowedBlockchainTypes,
+                        tokenTypes = allowedTokenTypes,
+                        address = addressUri.address,
+                        amount = addressUri.amount
+                    )
+                    emitState()
+                }
                 return
             }
         }
@@ -519,9 +592,11 @@ class MainViewModel(
         deeplinkPage = deeplinkPageData
         currentMainTab = tab
         val newTabIndex = items.indexOf(tab)
+        snapTabSwitch = lockGate.isLocked
         updateSelectedTab(selectedTabIndex, newTabIndex)
         selectedTabIndex = newTabIndex
         syncNavigation()
+        reportSelectedTab()
         emitState()
     }
 

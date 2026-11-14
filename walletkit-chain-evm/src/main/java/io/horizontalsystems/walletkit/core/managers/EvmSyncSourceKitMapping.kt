@@ -26,7 +26,9 @@ fun evmTransactionSource(blockchainType: BlockchainType, appConfigProvider: IApp
         BlockchainType.ArbitrumOne -> TransactionSource.arbitrumOne(appConfigProvider.etherscanApiKey)
         BlockchainType.Gnosis -> TransactionSource.gnosis(appConfigProvider.etherscanApiKey)
         BlockchainType.Fantom -> TransactionSource.fantom(appConfigProvider.etherscanApiKey)
-        BlockchainType.ZkSync -> TransactionSource.zkSync(appConfigProvider.otherScanApiKey)
+        BlockchainType.ZkSync -> TransactionSource.zkSync(appConfigProvider.blockscoutApiKey)
+        BlockchainType.RobinhoodChain -> TransactionSource.robinhood(appConfigProvider.blockscoutApiKey)
+        BlockchainType.Arc -> TransactionSource.arc(appConfigProvider.etherscanApiKey)
         EvmNetworkCatalog.cronos -> TransactionSource.cronos()
         EvmNetworkCatalog.blast -> etherscanV2(
             "blastscan.io",
@@ -47,14 +49,6 @@ fun evmTransactionSource(blockchainType: BlockchainType, appConfigProvider: IApp
             "hyperevmscan.io",
             "https://hyperevmscan.io",
             appConfigProvider.etherscanApiKey,
-        )
-        EvmNetworkCatalog.robinhood -> TransactionSource(
-            "robinhoodchain.blockscout.com",
-            TransactionSource.SourceType.Etherscan(
-                "https://robinhoodchain.blockscout.com/",
-                "https://robinhoodchain.blockscout.com",
-                listOf(""),
-            ),
         )
         else -> throw IllegalArgumentException("No transaction source for ${blockchainType.uid}")
     }

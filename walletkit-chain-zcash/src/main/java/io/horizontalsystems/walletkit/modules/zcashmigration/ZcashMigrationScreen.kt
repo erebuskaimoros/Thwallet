@@ -7,6 +7,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
@@ -23,13 +27,12 @@ import io.horizontalsystems.walletkit.modules.nav3.HSPage
 import io.horizontalsystems.walletkit.modules.send.ConfirmationBottomSection
 import io.horizontalsystems.walletkit.modules.send.ConfirmationTopSection
 import io.horizontalsystems.walletkit.modules.send.SendResult
-import io.horizontalsystems.walletkit.modules.multiswap.ui.DataFieldFeeTemplate
-import io.horizontalsystems.walletkit.ui.compose.components.ButtonPrimaryYellow
 import io.horizontalsystems.walletkit.ui.compose.components.TextWarningVersion2
 import io.horizontalsystems.walletkit.ui.compose.components.VSpacer
 import io.horizontalsystems.walletkit.uiv3.components.HSScaffold
 import kotlinx.coroutines.delay
 import kotlin.reflect.KClass
+import io.horizontalsystems.walletkit.uiv3.components.controls.HSButton
 
 @Composable
 fun ZcashMigrationScreen(
@@ -109,22 +112,6 @@ fun ZcashMigrationScreen(
                 feeCoinRate = uiState.coinRate,
                 navigation = navigation,
                 memo = null,
-                // The fee only exists once proposeIronwoodMigration() resolves, and
-                // ConfirmationBottomSection renders no fee row for a null fee — render the same
-                // cell with "n/a" in its place, so only the value changes when the fee lands.
-                additionalFields = if (uiState.fee == null) {
-                    {
-                        DataFieldFeeTemplate(
-                            navigation = navigation,
-                            primary = stringResource(R.string.NotAvailable),
-                            secondary = null,
-                            title = stringResource(R.string.FeeSettings_NetworkFee),
-                            infoText = stringResource(R.string.FeeSettings_NetworkFee_Info)
-                        )
-                    }
-                } else {
-                    null
-                }
             )
 
             VSpacer(16.dp)
@@ -145,15 +132,26 @@ fun ZcashMigrationScreen(
 }
 
 @Composable
-private fun MigrateButton(
+fun MigrateButton(
     modifier: Modifier,
     sendResult: SendResult?,
     onClick: () -> Unit,
     enabled: Boolean
 ) {
+    // The Sending/Sent branches below disable the button, but sendResult is assigned on an IO
+    // dispatcher after onClick() returns, so the button stays live for a frame or two and a double
+    // tap starts a second migration. Latch in the tap frame; a failure hands the button back.
+    var migrating by remember { mutableStateOf(false) }
+
+    LaunchedEffect(sendResult) {
+        if (sendResult is SendResult.Failed) {
+            migrating = false
+        }
+    }
+
     when (sendResult) {
         SendResult.Sending -> {
-            ButtonPrimaryYellow(
+            HSButton(
                 modifier = modifier,
                 title = stringResource(R.string.Send_Sending),
                 onClick = { },
@@ -162,7 +160,7 @@ private fun MigrateButton(
         }
 
         is SendResult.Sent -> {
-            ButtonPrimaryYellow(
+            HSButton(
                 modifier = modifier,
                 title = stringResource(R.string.Send_Success),
                 onClick = { },
@@ -171,11 +169,16 @@ private fun MigrateButton(
         }
 
         else -> {
-            ButtonPrimaryYellow(
+            HSButton(
                 modifier = modifier,
                 title = stringResource(R.string.Balance_Zcash_Migration_Migrate),
-                onClick = onClick,
-                enabled = enabled
+                onClick = {
+                    if (!migrating) {
+                        migrating = true
+                        onClick()
+                    }
+                },
+                enabled = enabled && !migrating
             )
         }
     }

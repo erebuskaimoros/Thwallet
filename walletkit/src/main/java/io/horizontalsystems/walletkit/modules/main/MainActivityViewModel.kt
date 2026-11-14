@@ -5,7 +5,9 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.navigation3.runtime.NavBackStack
 import io.horizontalsystems.walletkit.IKeyStoreManager
+import io.horizontalsystems.walletkit.modules.nav3.HSPage
 import io.horizontalsystems.walletkit.ISystemInfoManager
 import io.horizontalsystems.walletkit.core.App
 import io.horizontalsystems.walletkit.core.IAccountManager
@@ -15,6 +17,7 @@ import io.horizontalsystems.walletkit.core.managers.UserManager
 import io.horizontalsystems.walletkit.modules.walletconnect.WCDelegate
 import io.horizontalsystems.walletkit.security.KeyStoreValidationError
 import io.horizontalsystems.dapp.core.HSDAppEvent
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -32,6 +35,13 @@ class MainActivityViewModel(
 
     var mainShowedOnce = localStorage.mainShowedOnceFlow.value
 
+    // The navigation back stack. Held here rather than in saved state on purpose: it
+    // survives rotation with the view model, and dies with the process. Inner pages depend
+    // on live state that a killed process loses (view models of the pages beneath them,
+    // adapters built only once the wallets load), so restoring them would crash or show a
+    // flow with its inputs gone; a fresh process starts at the root instead.
+    var navBackStack: NavBackStack<HSPage>? = null
+
     override fun createState() = MainUIState(
         mainShowedOnce = mainShowedOnce
     )
@@ -45,7 +55,10 @@ class MainActivityViewModel(
         }
 
         viewModelScope.launch {
-            userManager.currentUserLevelFlow.collect {
+            // Only a change of user level sends the app back to the main screen. The StateFlow's
+            // current value replays on every activity start and would pop a page opened on
+            // launch (a widget deeplink, or a restored back stack).
+            userManager.currentUserLevelFlow.drop(1).collect {
                 navigateToMainLiveData.postValue(UUID.randomUUID().toString())
             }
         }

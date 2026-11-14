@@ -30,6 +30,7 @@ import io.horizontalsystems.marketkit.models.FullCoin
 import io.horizontalsystems.marketkit.models.LinkType
 import io.horizontalsystems.marketkit.models.Token
 import io.horizontalsystems.walletkit.R
+import io.horizontalsystems.walletkit.core.App
 import io.horizontalsystems.walletkit.core.alternativeImageUrl
 import io.horizontalsystems.walletkit.core.iconPlaceholder
 import io.horizontalsystems.walletkit.core.imageUrl
@@ -53,11 +54,11 @@ import io.horizontalsystems.walletkit.modules.managewallets.ManageWalletsViewMod
 import io.horizontalsystems.walletkit.modules.markdown.MarkdownPage
 import io.horizontalsystems.walletkit.modules.multiswap.SwapPage
 import io.horizontalsystems.walletkit.modules.nav3.HSNavigation
+import io.horizontalsystems.walletkit.modules.enablecoin.restoresettings.AccountPickerResult
+import io.horizontalsystems.walletkit.modules.nav3.observeResult
 import io.horizontalsystems.walletkit.modules.restoreconfig.BirthdayHeightConfigPage
 import io.horizontalsystems.walletkit.ui.compose.ComposeAppTheme
 import io.horizontalsystems.walletkit.ui.compose.HSSwipeRefresh
-import io.horizontalsystems.walletkit.ui.compose.components.ButtonPrimaryDefault
-import io.horizontalsystems.walletkit.ui.compose.components.ButtonPrimaryYellow
 import io.horizontalsystems.walletkit.ui.compose.components.ButtonSecondaryCircle
 import io.horizontalsystems.walletkit.ui.compose.components.ButtonSecondaryDefault
 import io.horizontalsystems.walletkit.ui.compose.components.CellFooter
@@ -70,6 +71,8 @@ import io.horizontalsystems.walletkit.ui.compose.components.body_leah
 import io.horizontalsystems.walletkit.ui.compose.components.subhead2_grey
 import io.horizontalsystems.walletkit.ui.helpers.LinkHelper
 import io.horizontalsystems.walletkit.ui.helpers.TextHelper
+import io.horizontalsystems.walletkit.uiv3.components.controls.HSButton
+import io.horizontalsystems.walletkit.uiv3.components.controls.ButtonVariant
 
 @Composable
 fun CoinOverviewScreen(
@@ -129,6 +132,15 @@ fun CoinOverviewScreen(
         forResult()
     }
 
+    val accountPickerKey = observeResult<AccountPickerResult> {
+        restoreSettingsViewModel.onAccountPickerResult(it)
+    }
+
+    restoreSettingsViewModel.openAccountPicker?.let { page ->
+        restoreSettingsViewModel.accountPickerOpened()
+        navigation.slideFromRightForResult(page, accountPickerKey)
+    }
+
 
     HSSwipeRefresh(
         refreshing = refreshing,
@@ -175,6 +187,7 @@ fun CoinOverviewScreen(
                                             if (chartIndicatorsState.hasActiveSubscription) {
                                                 if (chartIndicatorsState.enabled) {
                                                     ButtonSecondaryDefault(
+                                                        modifier = Modifier.height(28.dp),
                                                         title = stringResource(id = R.string.Button_Hide),
                                                         onClick = {
                                                             viewModel.disableChartIndicators()
@@ -242,21 +255,27 @@ fun CoinOverviewScreen(
                                         Spacer(modifier = Modifier.height(24.dp))
                                         TokenVariants(
                                             tokenVariants = tokenVariants,
-                                            onClickAddToWallet = {
-                                                manageWalletsViewModel.enable(it)
+                                            // The page is browsable while locked; changing the
+                                            // wallet is not.
+                                            onClickAddToWallet = { token ->
+                                                App.lockGate.requireUnlocked {
+                                                    manageWalletsViewModel.enable(token)
 
-                                                stat(
-                                                    page = StatPage.CoinOverview,
-                                                    event = StatEvent.AddToWallet
-                                                )
+                                                    stat(
+                                                        page = StatPage.CoinOverview,
+                                                        event = StatEvent.AddToWallet
+                                                    )
+                                                }
                                             },
-                                            onClickRemoveWallet = {
-                                                manageWalletsViewModel.disable(it)
+                                            onClickRemoveWallet = { token ->
+                                                App.lockGate.requireUnlocked {
+                                                    manageWalletsViewModel.disable(token)
 
-                                                stat(
-                                                    page = StatPage.CoinOverview,
-                                                    event = StatEvent.RemoveFromWallet
-                                                )
+                                                    stat(
+                                                        page = StatPage.CoinOverview,
+                                                        event = StatEvent.RemoveFromWallet
+                                                    )
+                                                }
                                             },
                                             onClickCopy = {
                                                 TextHelper.copyText(it)
@@ -413,7 +432,7 @@ private fun CoinBottomButtons(
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp)
         ) {
-            ButtonPrimaryYellow(
+            HSButton(
                 modifier = Modifier.weight(1f),
                 title = stringResource(R.string.CoinPage_Buy),
                 onClick = {
@@ -430,7 +449,8 @@ private fun CoinBottomButtons(
 
             HSpacer(8.dp)
 
-            ButtonPrimaryDefault(
+            HSButton(
+                variant = ButtonVariant.Secondary,
                 modifier = Modifier.weight(1f),
                 title = stringResource(R.string.CoinPage_Sell),
                 onClick = {

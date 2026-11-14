@@ -10,7 +10,6 @@ import io.horizontalsystems.walletkit.core.ethereum.EvmNetworkCatalog
 import io.horizontalsystems.marketkit.models.BlockchainType
 import io.horizontalsystems.marketkit.models.TokenQuery
 import io.horizontalsystems.marketkit.models.TokenType
-import io.horizontalsystems.tronkit.account.AddressHandler
 import org.web3j.ens.EnsResolver
 
 interface IAddressHandler {
@@ -117,6 +116,8 @@ class AddressHandlerUdn(
             BlockchainType.Optimism,
             BlockchainType.Base,
             BlockchainType.ZkSync,
+            BlockchainType.RobinhoodChain,
+            BlockchainType.Arc,
             BlockchainType.Avalanche,
             BlockchainType.Gnosis,
             BlockchainType.Fantom,
@@ -127,7 +128,6 @@ class AddressHandlerUdn(
             EvmNetworkCatalog.mantle -> "MNT"
             EvmNetworkCatalog.sei -> "SEI"
             EvmNetworkCatalog.hyperEvm -> "HYPE"
-            EvmNetworkCatalog.robinhood -> "ETH"
 
             BlockchainType.Bitcoin -> "BTC"
             BlockchainType.BitcoinCash -> "BCH"
@@ -140,6 +140,8 @@ class AddressHandlerUdn(
             BlockchainType.Tron -> "TRX"
             BlockchainType.Ton -> "TON"
             BlockchainType.Stellar -> "XLM"
+            BlockchainType.Xrp -> "XRP"
+            BlockchainType.Near -> "NEAR"
             BlockchainType.Thorchain -> "RUNE"
             BlockchainType.Mayachain -> "CACAO"
             BlockchainType.Monero -> "XMR"
@@ -163,6 +165,8 @@ class AddressHandlerUdn(
                 BlockchainType.Optimism,
                 BlockchainType.Base,
                 BlockchainType.ZkSync,
+                BlockchainType.RobinhoodChain,
+                BlockchainType.Arc,
                 BlockchainType.ArbitrumOne,
                 BlockchainType.Gnosis,
                 BlockchainType.Fantom -> "ERC20"
@@ -197,23 +201,6 @@ class AddressHandlerEvm(override val blockchainType: BlockchainType) : IAddressH
 
 
 
-class AddressHandlerTron : IAddressHandler {
-    override val blockchainType = BlockchainType.Tron
-
-    override fun isSupported(value: String) = try {
-        io.horizontalsystems.tronkit.models.Address.fromBase58(value)
-        true
-    } catch (e: AddressHandler.AddressValidationException) {
-        false
-    } catch (e: IllegalArgumentException) {
-        false
-    }
-
-    override fun parseAddress(value: String): Address {
-        val tronAddress = io.horizontalsystems.tronkit.models.Address.fromBase58(value)
-        return Address(tronAddress.base58, blockchainType = blockchainType)
-    }
-}
 
 
 

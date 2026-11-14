@@ -1,15 +1,13 @@
 package io.horizontalsystems.walletkit.modules.multiswap
 
 import android.annotation.SuppressLint
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -37,12 +35,12 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.FocusState
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
@@ -60,41 +58,34 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
-import io.horizontalsystems.walletkit.modules.multiswap.providers.MAYA_PROVIDER_ID
 import io.horizontalsystems.walletkit.R
 import io.horizontalsystems.walletkit.BuildConfig
 import io.horizontalsystems.walletkit.core.App
-import io.horizontalsystems.walletkit.core.badge
 import io.horizontalsystems.walletkit.core.stats.StatEvent
 import io.horizontalsystems.walletkit.core.stats.StatPage
 import io.horizontalsystems.walletkit.core.stats.stat
-import io.horizontalsystems.walletkit.entities.CoinValue
 import io.horizontalsystems.walletkit.entities.Currency
 import io.horizontalsystems.walletkit.modules.multiswap.history.SwapHistoryPage
 import io.horizontalsystems.walletkit.modules.multiswap.providers.SwapProviderType
 import io.horizontalsystems.walletkit.modules.multiswap.swapterms.SwapTermsPage
 import io.horizontalsystems.walletkit.modules.multiswap.ui.RiskScore
+import io.horizontalsystems.walletkit.modules.multiswap.ui.routeScore
+import io.horizontalsystems.walletkit.modules.enablecoin.restoresettings.AccountPickerResult
+import io.horizontalsystems.walletkit.modules.enablecoin.restoresettings.RestoreSettingsViewModel
 import io.horizontalsystems.walletkit.modules.nav3.HSNavigation
 import io.horizontalsystems.walletkit.modules.nav3.HSPage
+import io.horizontalsystems.walletkit.modules.nav3.observeResult
+import io.horizontalsystems.walletkit.modules.restoreconfig.BirthdayHeightConfigPage
 import io.horizontalsystems.walletkit.ui.compose.ColoredTextStyle
 import io.horizontalsystems.walletkit.ui.compose.ComposeAppTheme
-import io.horizontalsystems.walletkit.ui.compose.Keyboard
 import io.horizontalsystems.walletkit.ui.compose.TranslatableString
-import io.horizontalsystems.walletkit.ui.compose.components.BadgeText
-import io.horizontalsystems.walletkit.ui.compose.components.ButtonPrimaryDefault
-import io.horizontalsystems.walletkit.ui.compose.components.ButtonPrimaryYellow
-import io.horizontalsystems.walletkit.ui.compose.components.CoinImage
 import io.horizontalsystems.walletkit.ui.compose.components.HSpacer
-import io.horizontalsystems.walletkit.ui.compose.components.HsDivider
 import io.horizontalsystems.walletkit.ui.compose.components.MenuItem
 import io.horizontalsystems.walletkit.ui.compose.components.VSpacer
-import io.horizontalsystems.walletkit.ui.compose.components.body_grey
-import io.horizontalsystems.walletkit.ui.compose.components.headline1_grey
-import io.horizontalsystems.walletkit.ui.compose.components.headline1_leah
-import io.horizontalsystems.walletkit.ui.compose.components.headline2_jacob
-import io.horizontalsystems.walletkit.ui.compose.components.headline2_leah
+import io.horizontalsystems.walletkit.uiv3.components.controls.FiatLinePlaceholder
+import io.horizontalsystems.walletkit.uiv3.components.controls.TokenAmountInput
+import io.horizontalsystems.walletkit.uiv3.components.controls.TokenSelector
 import io.horizontalsystems.walletkit.ui.compose.components.subhead2_leah
-import io.horizontalsystems.walletkit.ui.compose.observeKeyboardState
 import io.horizontalsystems.walletkit.uiv3.components.AlertCard
 import io.horizontalsystems.walletkit.uiv3.components.AlertFormat
 import io.horizontalsystems.walletkit.uiv3.components.AlertType
@@ -111,7 +102,13 @@ import io.horizontalsystems.walletkit.uiv3.components.controls.ButtonVariant
 import io.horizontalsystems.walletkit.uiv3.components.controls.HSIconButton
 import io.horizontalsystems.marketkit.models.BlockchainType
 import io.horizontalsystems.marketkit.models.Token
+import io.horizontalsystems.walletkit.uiv3.components.BoxBordered
+import io.horizontalsystems.walletkit.uiv3.components.bottombars.ButtonsGroupVertical
+import io.horizontalsystems.walletkit.uiv3.components.controls.AvailableBalanceRow
+import io.horizontalsystems.walletkit.uiv3.components.controls.HSButton
 import kotlinx.coroutines.flow.first
+import io.horizontalsystems.walletkit.helpers.HudHelper
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
@@ -152,6 +149,39 @@ fun SwapScreen(
     val viewModel = viewModel<SwapViewModel>(
         factory = SwapViewModel.Factory(tokenIn, tokenOut)
     )
+    // Shares the swap view model's service, which saves the wallet once the settings are approved
+    val restoreSettingsViewModel = viewModel<RestoreSettingsViewModel> {
+        RestoreSettingsViewModel(viewModel.restoreSettingsService, emptyList())
+    }
+
+    val birthdayHeightKey = observeResult<BirthdayHeightConfigPage.Result> {
+        if (it.config != null) {
+            restoreSettingsViewModel.onEnter(it.config)
+        } else {
+            restoreSettingsViewModel.onCancelEnterBirthdayHeight()
+        }
+    }
+
+    restoreSettingsViewModel.openBirthdayHeightConfig?.let { token ->
+        restoreSettingsViewModel.birthdayHeightConfigOpened()
+        navigation.slideFromRightForResult(BirthdayHeightConfigPage(token.blockchainType), birthdayHeightKey)
+    }
+
+    val accountPickerKey = observeResult<AccountPickerResult> {
+        restoreSettingsViewModel.onAccountPickerResult(it)
+    }
+
+    val view = LocalView.current
+    LaunchedEffect(Unit) {
+        viewModel.enableTokenInErrorFlow.collect { e ->
+            HudHelper.showErrorMessage(view, e.message ?: e.javaClass.simpleName)
+        }
+    }
+
+    restoreSettingsViewModel.openAccountPicker?.let { page ->
+        restoreSettingsViewModel.accountPickerOpened()
+        navigation.slideFromRightForResult(page, accountPickerKey)
+    }
 
     LifecycleResumeEffect(Unit) {
         viewModel.refreshDefaultTokens()
@@ -177,25 +207,35 @@ fun SwapScreen(
         }
     }
 
+    val recipientScope = rememberCoroutineScope()
     val navigateToSwapConfirm = {
         val tokenOut = viewModel.uiState.tokenOut
+        val quote = viewModel.uiState.quote
         if (viewModel.uiState.externalRecipientRequired && tokenOut != null) {
             // tokenOut the account can't hold: the recipient page collects the external
-            // delivery address and opens the confirmation itself
-            navigation.slideFromRight(
-                SwapRecipientPage(
-                    SwapRecipientPage.Input(
-                        token = tokenOut,
-                        parentScreenContentKey = parentScreenContentKey,
-                        closeAfterSwap = closeAfterSwap,
-                        initialAddress = viewModel.externalRecipient?.hex,
-                        // only Maya delivers ZEC to shielded/unified receivers; every
-                        // other route needs a transparent address
-                        zcashTransparentOnly = tokenOut.blockchainType == BlockchainType.Zcash &&
-                                viewModel.uiState.quote?.provider?.id != MAYA_PROVIDER_ID,
+            // delivery address and opens the confirmation itself. Whether a ZEC recipient may
+            // be shielded depends on the provider's execution type, which only /v3/providers
+            // says: on a first launch with nothing cached that answer is awaited first, so the
+            // page is not opened transparent-only for a route that delivers shielded. A failed
+            // sync leaves nothing cached and the page stays transparent-only.
+            recipientScope.launch {
+                if (tokenOut.blockchainType == BlockchainType.Zcash && !App.swapProviderInfoManager.hasExecutionTypes) {
+                    App.swapProviderInfoManager.sync()
+                }
+                navigation.slideFromRight(
+                    SwapRecipientPage(
+                        SwapRecipientPage.Input(
+                            token = tokenOut,
+                            parentScreenContentKey = parentScreenContentKey,
+                            closeAfterSwap = closeAfterSwap,
+                            initialAddress = viewModel.externalRecipient?.hex,
+                            zcashTransparentOnly = quote
+                                ?.let { App.swapProviderInfoManager.zcashTransparentRecipientOnly(it.provider.id, it.swapQuote) }
+                                ?: (tokenOut.blockchainType == BlockchainType.Zcash),
+                        )
                     )
                 )
-            )
+            }
         } else {
             forResult()
         }
@@ -207,25 +247,51 @@ fun SwapScreen(
     ) {
         if (it.accepted) navigateToSwapConfirm()
     }
+    // startProceed() is asynchronous on both of its paths — the no-precheck path only emits on the
+    // view model scope and sets no state at all — so the Proceed button stays live after the first
+    // tap. A second tap emits a second Proceed and pushes a second confirmation page. Latch in the
+    // same frame as the tap and hand the button back on whatever outcome comes back.
+    var proceeding by remember { mutableStateOf(false) }
+
+    val startProceed = {
+        if (!proceeding) {
+            // Latch on whether the flow actually started: startProceed() bails out when there is
+            // no quote yet, and that path emits no event, so latching unconditionally would leave
+            // the button disabled with nothing to release it.
+            proceeding = viewModel.startProceed()
+        }
+    }
+
     LaunchedEffect(Unit) {
         viewModel.amlCheckEventFlow.collect { event ->
-            when (event) {
-                AmlCheckEvent.Proceed -> {
-                    if (viewModel.uiState.needToAcceptTerms) {
-                        forResultSwapTerms()
-                    } else {
-                        navigateToSwapConfirm()
+            proceeding = false
+
+            // A throw here would end the collect and take the whole flow down with it: no later
+            // AML result would be handled, and since the latch is only released here, the next tap
+            // would disable Proceed for good. Keep the collector alive instead.
+            try {
+                when (event) {
+                    AmlCheckEvent.Proceed -> {
+                        if (viewModel.uiState.needToAcceptTerms) {
+                            forResultSwapTerms()
+                        } else {
+                            navigateToSwapConfirm()
+                        }
+                    }
+                    AmlCheckEvent.RiskDetected -> {
+                        showAmlRiskSheet = true
+                    }
+                    is AmlCheckEvent.Error -> {
+                        showAmlErrorSheet = true
+                    }
+                    AmlCheckEvent.RiskUnknown -> {
+                        showAmlUnknownSheet = true
                     }
                 }
-                AmlCheckEvent.RiskDetected -> {
-                    showAmlRiskSheet = true
-                }
-                is AmlCheckEvent.Error -> {
-                    showAmlErrorSheet = true
-                }
-                AmlCheckEvent.RiskUnknown -> {
-                    showAmlUnknownSheet = true
-                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                Log.e("SwapPage", "Handling AML check event failed", e)
             }
         }
     }
@@ -258,7 +324,7 @@ fun SwapScreen(
             onDismiss = { showAmlErrorSheet = false },
             onRetry = {
                 showAmlErrorSheet = false
-                viewModel.startProceed()
+                startProceed()
             },
         )
     }
@@ -307,13 +373,15 @@ fun SwapScreen(
 
             stat(page = StatPage.Swap, event = StatEvent.Open(StatPage.SwapProvider))
         },
-        onClickNext = viewModel::startProceed,
+        onClickNext = startProceed,
+        proceedEnabled = !proceeding,
         onActionStarted = {
             viewModel.onActionStarted(uiState.quote)
         },
         onActionCompleted = {
             viewModel.onActionCompleted()
         },
+        onEnableTokenIn = viewModel::enableTokenIn,
         navigation = navigation,
         onResume = viewModel::onResume,
         onPause = viewModel::onPause,
@@ -334,8 +402,10 @@ private fun SwapScreenInner(
     onEnterAmountPercentage: (Int) -> Unit,
     onClickProvider: () -> Unit,
     onClickNext: () -> Unit,
+    proceedEnabled: Boolean,
     onActionStarted: () -> Unit,
     onActionCompleted: () -> Unit,
+    onEnableTokenIn: suspend () -> Unit,
     navigation: HSNavigation,
     onResume: () -> Unit,
     onPause: () -> Unit,
@@ -380,8 +450,6 @@ private fun SwapScreenInner(
             )),
         onBack = onClickClose,
     ) {
-        val keyboardState by observeKeyboardState()
-        var amountInputHasFocus by remember { mutableStateOf(false) }
         val amountInputFocusRequester = remember { FocusRequester() }
 
         // Show the keyboard only when the user navigates to this screen — not when it is
@@ -397,7 +465,11 @@ private fun SwapScreenInner(
         }
 
         Box(modifier = Modifier.fillMaxSize()) {
-            Column(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(ComposeAppTheme.colors.lawrence)
+            ) {
                 SwapInput(
                     amountIn = uiState.amountIn,
                     fiatAmountIn = uiState.fiatAmountIn,
@@ -406,6 +478,7 @@ private fun SwapScreenInner(
                     switchPairsEnabled = !uiState.externalRecipientRequired,
                     amountOut = quote?.amountOut,
                     fiatAmountOut = uiState.fiatAmountOut,
+                    hasRateOut = uiState.hasRateOut,
                     fiatPriceImpact = uiState.fiatPriceImpact,
                     fiatPriceImpactLevel = uiState.fiatPriceImpactLevel,
                     onValueChange = onEnterAmount,
@@ -419,17 +492,30 @@ private fun SwapScreenInner(
                     tokenIn = uiState.tokenIn,
                     tokenOut = uiState.tokenOut,
                     currency = uiState.currency,
-                    onFocusChanged = {
-                        amountInputHasFocus = it.hasFocus
-                    },
                     focusRequester = amountInputFocusRequester,
+                    availableBalance = uiState.availableBalance,
+                    showBalancePlaceholder = uiState.tokenInWalletState != TokenInWalletState.Ready,
+                    // The line doubles as the 100% shortcut whenever that percent is offered.
+                    onAvailableBalanceClick = if (100 in uiState.disabledPercents) {
+                        null
+                    } else {
+                        {
+                            focusManager.clearFocus()
+                            onEnterAmountPercentage(100)
+                        }
+                    },
+                    onPercentClick = {
+                        focusManager.clearFocus()
+                        onEnterAmountPercentage(it)
+                    },
+                    onClearClick = {
+                        onEnterAmount(null)
+                    }
                 )
-                VSpacer(height = 8.dp)
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                        .background(ComposeAppTheme.colors.lawrence)
                         .imePadding()
                 ) {
                     Column(
@@ -438,10 +524,6 @@ private fun SwapScreenInner(
                             .weight(1f)
                             .verticalScroll(rememberScrollState())
                     ) {
-                        if (quote == null) {
-                            AvailableBalanceField(uiState.tokenIn, uiState.availableBalance)
-                        }
-
                         var showRegularPrice by remember(uiState.initialShowRegularPrice, uiState.tokenIn, uiState.tokenOut) {
                             mutableStateOf(uiState.initialShowRegularPrice)
                         }
@@ -483,123 +565,153 @@ private fun SwapScreenInner(
                         VSpacer(height = 32.dp)
                     }
 
-                    when (val currentStep = uiState.currentStep) {
-                        is SwapStep.InputRequired -> {
-                            val title = when (currentStep.inputType) {
-                                InputType.TokenIn -> stringResource(R.string.Swap_SelectTokenIn)
-                                InputType.TokenOut -> stringResource(R.string.Swap_SelectTokenOut)
-                                InputType.Amount -> stringResource(R.string.Swap_EnterAmount)
-                            }
+                    SwapActionButton(
+                        currentStep = uiState.currentStep,
+                        navigation = navigation,
+                        onActionCompleted = onActionCompleted,
+                        onActionStarted = onActionStarted,
+                        onEnableTokenIn = {
+                            focusManager.clearFocus()
+                            onEnableTokenIn()
+                        },
+                        proceedEnabled = proceedEnabled,
+                        onClickNext = onClickNext
+                    )
+                    VSpacer(height = bottomPadding)
+                }
+            }
+        }
+    }
+}
 
-                            ButtonPrimaryYellow(
-                                modifier = Modifier
-                                    .padding(horizontal = 16.dp)
-                                    .fillMaxWidth(),
-                                title = title,
-                                enabled = false,
-                                onClick = {}
-                            )
+@Composable
+private fun SwapActionButton(
+    currentStep: SwapStep,
+    navigation: HSNavigation,
+    onActionCompleted: () -> Unit,
+    onActionStarted: () -> Unit,
+    onEnableTokenIn: suspend () -> Unit,
+    proceedEnabled: Boolean,
+    onClickNext: () -> Unit
+) {
+    ButtonsGroupVertical {
+        when (currentStep) {
+            is SwapStep.InputRequired -> {
+                val title = when (currentStep.inputType) {
+                    InputType.TokenIn -> stringResource(R.string.Swap_SelectTokenIn)
+                    InputType.TokenOut -> stringResource(R.string.Swap_SelectTokenOut)
+                    InputType.Amount -> stringResource(R.string.Swap_EnterAmount)
+                }
+
+                HSButton(
+                    modifier = Modifier.fillMaxWidth(),
+                    title = title,
+                    enabled = false
+                )
+            }
+
+            SwapStep.Quoting -> {
+                HSButton(
+                    modifier = Modifier.fillMaxWidth(),
+                    title = stringResource(R.string.Swap_Quoting),
+                    loadingIndicator = true,
+                    enabled = false
+                )
+            }
+
+            is SwapStep.EnableTokenIn -> {
+                // Local state: the step only changes once the wallet is saved in the background
+                var enabling by remember(currentStep.token) { mutableStateOf(false) }
+                val coroutineScope = rememberCoroutineScope()
+                val view = LocalView.current
+
+                HSButton(
+                    modifier = Modifier.fillMaxWidth(),
+                    variant = ButtonVariant.Secondary,
+                    title = stringResource(R.string.Swap_EnableToken, currentStep.token.coin.code),
+                    enabled = !enabling,
+                ) {
+                    enabling = true
+                    coroutineScope.launch {
+                        try {
+                            onEnableTokenIn()
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Throwable) {
+                            HudHelper.showErrorMessage(view, e.message ?: e.javaClass.simpleName)
+                        } finally {
+                            enabling = false
                         }
-
-                        SwapStep.Quoting -> {
-                            ButtonPrimaryYellow(
-                                modifier = Modifier
-                                    .padding(horizontal = 16.dp)
-                                    .fillMaxWidth(),
-                                title = stringResource(R.string.Swap_Quoting),
-                                enabled = false,
-                                loadingIndicator = true,
-                                onClick = {}
-                            )
-                        }
-
-                        SwapStep.AmlChecking -> {
-                            ButtonPrimaryYellow(
-                                modifier = Modifier
-                                    .padding(horizontal = 16.dp)
-                                    .fillMaxWidth(),
-                                title = stringResource(R.string.Swap_Proceed),
-                                enabled = false,
-                                loadingIndicator = true,
-                                onClick = {}
-                            )
-                        }
-
-                        is SwapStep.Error -> {
-                            val errorText = when (val error = currentStep.error) {
-                                SwapError.InsufficientBalanceFrom -> stringResource(id = R.string.Swap_ErrorInsufficientBalance)
-                                is NoSupportedSwapProvider -> stringResource(id = R.string.Swap_ErrorNoProviders)
-                                is SwapRouteNotFound -> stringResource(id = R.string.Swap_ErrorNoQuote)
-                                is UnknownHostException -> stringResource(id = R.string.Hud_Text_NoInternet)
-                                is TokenNotEnabled -> stringResource(id = R.string.Swap_ErrorTokenNotEnabled)
-                                is WalletSyncing -> stringResource(id = R.string.Swap_ErrorWalletSyncing)
-                                is WalletNotSynced -> stringResource(id = R.string.Swap_ErrorWalletNotSynced)
-                                else -> error.message ?: error.javaClass.simpleName
-                            }
-
-                            ButtonPrimaryYellow(
-                                modifier = Modifier
-                                    .padding(horizontal = 16.dp)
-                                    .fillMaxWidth(),
-                                title = errorText,
-                                enabled = false,
-                                onClick = {}
-                            )
-                        }
-
-                        is SwapStep.ActionRequired -> {
-                            val action = currentStep.action
-                            val title = if (action.inProgress) {
-                                action.getTitleInProgress()
-                            } else {
-                                action.getTitle()
-                            }
-
-                            val executor = action.executor(navigation, onActionCompleted)
-
-                            ButtonPrimaryDefault(
-                                modifier = Modifier
-                                    .padding(horizontal = 16.dp)
-                                    .fillMaxWidth(),
-                                title = title,
-                                enabled = !action.inProgress,
-                                onClick = {
-                                    onActionStarted.invoke()
-                                    executor()
-                                },
-                                loadingIndicator = action.inProgress
-                            )
-                        }
-
-                        SwapStep.Proceed -> {
-                            ButtonPrimaryYellow(
-                                modifier = Modifier
-                                    .padding(horizontal = 16.dp)
-                                    .fillMaxWidth(),
-                                title = stringResource(R.string.Swap_Proceed),
-                                onClick = onClickNext
-                            )
-                        }
-                    }
-                    if (amountInputHasFocus && keyboardState == Keyboard.Opened) {
-                        val hasNonZeroBalance =
-                            uiState.availableBalance != null && uiState.availableBalance > BigDecimal.ZERO
-                        VSpacer(height = 16.dp)
-                        SuggestionsBar(
-                            onDelete = {
-                                onEnterAmount.invoke(null)
-                            },
-                            onSelect = {
-                                focusManager.clearFocus()
-                                onEnterAmountPercentage.invoke(it)
-                            },
-                            selectEnabled = hasNonZeroBalance,
-                            deleteEnabled = uiState.amountIn != null,
-                        )
-                    } else {
-                        VSpacer(height = 16.dp + bottomPadding)
                     }
                 }
+            }
+
+            SwapStep.Syncing -> {
+                HSButton(
+                    modifier = Modifier.fillMaxWidth(),
+                    title = stringResource(R.string.Balance_Syncing),
+                    loadingIndicator = true,
+                    enabled = false
+                )
+            }
+
+            SwapStep.AmlChecking -> {
+                HSButton(
+                    modifier = Modifier.fillMaxWidth(),
+                    title = stringResource(R.string.Swap_Proceed),
+                    loadingIndicator = true,
+                    enabled = false
+                )
+            }
+
+            is SwapStep.Error -> {
+                val errorText = when (val error = currentStep.error) {
+                    SwapError.InsufficientBalanceFrom -> stringResource(id = R.string.Swap_ErrorInsufficientBalance)
+                    is NoSupportedSwapProvider -> stringResource(id = R.string.Swap_ErrorNoProviders)
+                    is SwapRouteNotFound -> stringResource(id = R.string.Swap_ErrorNoQuote)
+                    is UnknownHostException -> stringResource(id = R.string.Hud_Text_NoInternet)
+                    is TokenNotEnabled -> stringResource(id = R.string.Swap_ErrorTokenNotEnabled)
+                    is WalletSyncing -> stringResource(id = R.string.Swap_ErrorWalletSyncing)
+                    is WalletNotSynced -> stringResource(id = R.string.Swap_ErrorWalletNotSynced)
+                    else -> error.message ?: error.javaClass.simpleName
+                }
+
+                HSButton(
+                    modifier = Modifier.fillMaxWidth(),
+                    title = errorText,
+                    enabled = false
+                )
+            }
+
+            is SwapStep.ActionRequired -> {
+                val action = currentStep.action
+                val title = if (action.inProgress) {
+                    action.getTitleInProgress()
+                } else {
+                    action.getTitle()
+                }
+
+                val executor = action.executor(navigation, onActionCompleted)
+
+                HSButton(
+                    modifier = Modifier.fillMaxWidth(),
+                    variant = ButtonVariant.Secondary,
+                    title = title,
+                    loadingIndicator = action.inProgress,
+                    enabled = !action.inProgress,
+                ) {
+                    onActionStarted.invoke()
+                    executor()
+                }
+            }
+
+            SwapStep.Proceed -> {
+                HSButton(
+                    modifier = Modifier.fillMaxWidth(),
+                    title = stringResource(R.string.Swap_Proceed),
+                    enabled = proceedEnabled,
+                    onClick = onClickNext
+                )
             }
         }
     }
@@ -654,19 +766,21 @@ private fun ProviderCellInfo(
                 }
             )
         }
-        CellSecondary(
-            middle = {
-                CellMiddleInfoTextIcon(
-                    text = stringResource(R.string.RiskLevel_ProviderRiskLevel).hs,
-                    icon = painterResource(R.drawable.ic_info_24),
-                    iconTint = ComposeAppTheme.colors.grey,
-                )
-            },
-            right = {
-                RiskScore(quote.provider.riskLevel)
-            },
-            onClick = onClickProviderScoreInfo
-        )
+        routeScore(quote.provider.id)?.let { riskLevel ->
+            CellSecondary(
+                middle = {
+                    CellMiddleInfoTextIcon(
+                        text = stringResource(R.string.RiskLevel_ProviderRiskLevel).hs,
+                        icon = painterResource(R.drawable.ic_info_24),
+                        iconTint = ComposeAppTheme.colors.grey,
+                    )
+                },
+                right = {
+                    RiskScore(riskLevel)
+                },
+                onClick = onClickProviderScoreInfo
+            )
+        }
         quote.estimationTime?.let { estimationTime ->
             val infoTitle = stringResource(R.string.Swap_SwapTime)
             val infoText = stringResource(R.string.Swap_EstimatedTimeDescription)
@@ -748,20 +862,6 @@ private fun LeftSelector(
 }
 
 @Composable
-private fun AvailableBalanceField(tokenIn: Token?, availableBalance: BigDecimal?) {
-    Row(modifier = Modifier.padding(16.dp)) {
-        CellMiddleInfo(eyebrow = stringResource(R.string.Swap_AvailableBalance).hs)
-        val text = if (tokenIn != null && availableBalance != null) {
-            CoinValue(tokenIn, availableBalance).getFormattedFull()
-        } else {
-            "---"
-        }
-        Spacer(modifier = Modifier.weight(1f))
-        CellRightInfo(titleSubheadSb = text.hs)
-    }
-}
-
-@Composable
 fun PriceImpactField(
     priceImpact: BigDecimal?,
     priceImpactLevel: PriceImpactLevel?,
@@ -821,6 +921,7 @@ private fun SwapInput(
     switchPairsEnabled: Boolean,
     amountOut: BigDecimal?,
     fiatAmountOut: BigDecimal?,
+    hasRateOut: Boolean,
     fiatPriceImpact: BigDecimal?,
     fiatPriceImpactLevel: PriceImpactLevel?,
     onValueChange: (BigDecimal?) -> Unit,
@@ -830,83 +931,60 @@ private fun SwapInput(
     tokenIn: Token?,
     tokenOut: Token?,
     currency: Currency,
-    onFocusChanged: (FocusState) -> Unit,
     focusRequester: FocusRequester,
+    availableBalance: BigDecimal?,
+    showBalancePlaceholder: Boolean,
+    onAvailableBalanceClick: (() -> Unit)?,
+    onPercentClick: (Int) -> Unit,
+    onClearClick: (() -> Unit)
 ) {
-    Box {
-        Column(
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            SwapCoinInputIn(
-                coinAmount = amountIn,
-                fiatAmount = fiatAmountIn,
-                currency = currency,
-                onValueChange = onValueChange,
-                onFiatValueChange = onFiatValueChange,
-                fiatAmountInputEnabled = fiatAmountInputEnabled,
-                token = tokenIn,
-                onClickCoin = onClickCoinFrom,
-                onFocusChanged = onFocusChanged,
-                focusRequester = focusRequester
-            )
-            SwapCoinInputTo(
-                coinAmount = amountOut,
-                fiatAmount = fiatAmountOut,
-                fiatPriceImpact = fiatPriceImpact,
-                fiatPriceImpactLevel = fiatPriceImpactLevel,
-                currency = currency,
-                token = tokenOut,
-                onClickCoin = onClickCoinTo
-            )
-        }
-        HsDivider(modifier = Modifier.align(Alignment.Center))
-        Box(Modifier.align(Alignment.Center)) {
-            HSIconButton(
-                variant = ButtonVariant.Secondary,
-                style = ButtonStyle.Solid,
-                size = ButtonSize.Small,
-                icon = painterResource(id = R.drawable.ic_arrow_down_20),
-                enabled = switchPairsEnabled,
-                onClick = onSwitchPairs
-            )
-        }
-    }
-}
-
-@Composable
-private fun SwapCoinInputIn(
-    coinAmount: BigDecimal?,
-    fiatAmount: BigDecimal?,
-    currency: Currency,
-    onValueChange: (BigDecimal?) -> Unit,
-    onFiatValueChange: (BigDecimal?) -> Unit,
-    fiatAmountInputEnabled: Boolean,
-    token: Token?,
-    onClickCoin: () -> Unit,
-    onFocusChanged: (FocusState) -> Unit,
-    focusRequester: FocusRequester,
-) {
-    Row(
-        modifier = Modifier
-            .onFocusChanged(onFocusChanged)
-            .padding(horizontal = 16.dp, vertical = 20.dp),
-        verticalAlignment = Alignment.CenterVertically
+    Column(
+        modifier = Modifier.fillMaxWidth()
     ) {
-        CoinSelector(token, onClickCoin)
-        HSpacer(width = 8.dp)
-        Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.End) {
-            AmountInput(
-                value = coinAmount,
-                onValueChange = onValueChange,
-                focusRequester = focusRequester
-            )
-            VSpacer(height = 3.dp)
-            FiatAmountInput(
-                value = fiatAmount,
-                currency = currency,
-                onValueChange = onFiatValueChange,
-                enabled = fiatAmountInputEnabled
-            )
+        AvailableBalanceRow(
+            balanceToken = tokenIn,
+            availableBalance = availableBalance,
+            showPlaceholder = showBalancePlaceholder,
+            onAvailableBalanceClick = onAvailableBalanceClick,
+            onPercentClick = onPercentClick,
+            onClearClick = onClearClick,
+            showClear = amountIn != null
+        )
+        Box {
+            Column {
+                TokenAmountInput(
+                    token = tokenIn,
+                    amount = amountIn,
+                    fiatAmount = fiatAmountIn,
+                    fiatAmountInputEnabled = fiatAmountInputEnabled,
+                    currency = currency,
+                    focusRequester = focusRequester,
+                    onValueChange = onValueChange,
+                    onFiatValueChange = onFiatValueChange,
+                    amountExceedsBalance = false,
+                    onTokenClick = onClickCoinFrom
+                )
+                SwapCoinInputTo(
+                    coinAmount = amountOut,
+                    fiatAmount = fiatAmountOut,
+                    hasRate = hasRateOut,
+                    fiatPriceImpact = fiatPriceImpact,
+                    fiatPriceImpactLevel = fiatPriceImpactLevel,
+                    currency = currency,
+                    token = tokenOut,
+                    onClickCoin = onClickCoinTo
+                )
+            }
+            Box(Modifier.align(Alignment.Center)) {
+                HSIconButton(
+                    variant = ButtonVariant.Secondary,
+                    style = ButtonStyle.Solid,
+                    size = ButtonSize.Small,
+                    icon = painterResource(id = R.drawable.ic_arrow_down_24),
+                    enabled = switchPairsEnabled,
+                    onClick = onSwitchPairs
+                )
+            }
         }
     }
 }
@@ -915,83 +993,55 @@ private fun SwapCoinInputIn(
 private fun SwapCoinInputTo(
     coinAmount: BigDecimal?,
     fiatAmount: BigDecimal?,
+    hasRate: Boolean,
     fiatPriceImpact: BigDecimal?,
     fiatPriceImpactLevel: PriceImpactLevel?,
     currency: Currency,
     token: Token?,
     onClickCoin: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .padding(horizontal = 16.dp, vertical = 20.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        CoinSelector(token, onClickCoin)
-        HSpacer(8.dp)
-        Column(
-            modifier = Modifier.weight(1f),
-            horizontalAlignment = Alignment.End
+    BoxBordered(bottom = true) {
+        Row(
+            modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 24.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            if (coinAmount == null) {
-                headline1_grey(text = "0")
-            } else {
-                headline1_leah(
-                    text = coinAmount.toPlainString(),
+            TokenSelector(token = token, onClick = onClickCoin)
+            HSpacer(8.dp)
+            Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.End) {
+                Text(
+                    text = (coinAmount ?: BigDecimal.ZERO).toPlainString(),
+                    style = ComposeAppTheme.typography.headline1,
+                    color = if (coinAmount == null) ComposeAppTheme.colors.grey else ComposeAppTheme.colors.leah,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-            }
-            VSpacer(height = 3.dp)
-            if (fiatAmount == null) {
-                body_grey(text = "${currency.symbol}0")
-            } else {
-                Row {
-                    body_grey(text = "${currency.symbol}${fiatAmount.toPlainString()}")
-                    fiatPriceImpact?.let { diff ->
-                        HSpacer(width = 4.dp)
+                if (hasRate) {
+                    Row {
                         Text(
-                            text = stringResource(R.string.Swap_FiatPriceImpact, diff.toPlainString()),
+                            text = "${currency.symbol}${(fiatAmount ?: BigDecimal.ZERO).toPlainString()}",
                             style = ComposeAppTheme.typography.body,
-                            color = getPriceImpactColor(fiatPriceImpactLevel),
+                            color = if (fiatAmount == null) ComposeAppTheme.colors.andy else ComposeAppTheme.colors.grey,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
+
+                        fiatPriceImpact?.let { diff ->
+                            HSpacer(width = 4.dp)
+                            Text(
+                                text = stringResource(R.string.Swap_FiatPriceImpact, diff.toPlainString()),
+                                style = ComposeAppTheme.typography.body,
+                                color = getPriceImpactColor(fiatPriceImpactLevel),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
+                } else {
+                    FiatLinePlaceholder(currency)
                 }
             }
         }
     }
-}
-
-@Composable
-private fun CoinSelector(
-    token: Token?,
-    onClickCoin: () -> Unit,
-) {
-    Selector(
-        icon = {
-            CoinImage(
-                token = token,
-                modifier = Modifier.size(32.dp)
-            )
-        },
-        text = {
-            if (token != null) {
-                Column {
-                    headline2_leah(text = token.coin.code)
-                    VSpacer(height = 5.dp)
-                    BadgeText(
-                        text = token.badge ?: stringResource(id = R.string.CoinPlatforms_Native),
-                        background = ComposeAppTheme.colors.blade,
-                        textColor = ComposeAppTheme.colors.leah,
-                    )
-                }
-            } else {
-                headline2_jacob(text = stringResource(R.string.Swap_TokenSelectorTitle))
-            }
-        },
-        onClickSelect = onClickCoin
-    )
 }
 
 @Composable
@@ -1006,18 +1056,21 @@ fun FiatAmountInput(
     }
     val displayTransformation = remember(currency.symbol) {
         VisualTransformation { originalText ->
-            val prefixLen = currency.symbol.length
-            val isEmpty = originalText.text.isEmpty()
-            val visual = AnnotatedString(currency.symbol + originalText.text + if (isEmpty) "0" else "")
-            TransformedText(
-                text = visual,
-                offsetMapping = object : OffsetMapping {
-                    override fun originalToTransformed(offset: Int) =
-                        if (isEmpty) prefixLen + 1 else offset + prefixLen
-                    override fun transformedToOriginal(offset: Int) =
-                        (offset - prefixLen).coerceIn(0, originalText.text.length)
-                }
-            )
+            if (originalText.text.isEmpty()) {
+                TransformedText(originalText, OffsetMapping.Identity)
+            } else {
+                val prefixLen = currency.symbol.length
+                val visual = AnnotatedString(currency.symbol + originalText.text)
+                TransformedText(
+                    text = visual,
+                    offsetMapping = object : OffsetMapping {
+                        override fun originalToTransformed(offset: Int) =
+                            offset + prefixLen
+                        override fun transformedToOriginal(offset: Int) =
+                            (offset - prefixLen).coerceIn(0, originalText.text.length)
+                    }
+                )
+            }
         }
     }
     BasicTextField(
@@ -1048,41 +1101,29 @@ fun FiatAmountInput(
         ),
         cursorBrush = SolidColor(ComposeAppTheme.colors.leah),
         visualTransformation = displayTransformation,
+        decorationBox = { innerTextField ->
+            if (text.isEmpty()) {
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                    Text(
+                        text = "${currency.symbol}0",
+                        style = ComposeAppTheme.typography.body,
+                        color = ComposeAppTheme.colors.andy,
+                    )
+                }
+            }
+            innerTextField()
+        }
     )
-}
-
-@Composable
-private fun Selector(
-    icon: @Composable() (RowScope.() -> Unit),
-    text: @Composable() (RowScope.() -> Unit),
-    onClickSelect: () -> Unit,
-) {
-    Row(
-        modifier = Modifier.clickable(
-            interactionSource = remember { MutableInteractionSource() },
-            indication = null,
-            onClick = onClickSelect,
-        ),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        icon.invoke(this)
-        HSpacer(width = 16.dp)
-        text.invoke(this)
-        HSpacer(width = 8.dp)
-        Icon(
-            painter = painterResource(R.drawable.arrow_s_down_20),
-            contentDescription = "",
-            tint = ComposeAppTheme.colors.leah
-        )
-    }
 }
 
 @Composable
 fun AmountInput(
     value: BigDecimal?,
     onValueChange: (BigDecimal?) -> Unit,
-    focusRequester: FocusRequester = FocusRequester()
+    focusRequester: FocusRequester = FocusRequester(),
+    error: Boolean
 ) {
+    val textColor = if (error) ComposeAppTheme.colors.lucian else ComposeAppTheme.colors.leah
     var amount by rememberSaveable {
         mutableStateOf(value)
     }
@@ -1137,7 +1178,7 @@ fun AmountInput(
             }
         },
         textStyle = ColoredTextStyle(
-            color = ComposeAppTheme.colors.leah,
+            color = textColor,
             textStyle = ComposeAppTheme.typography.headline1,
             textAlign = TextAlign.End
         ),
@@ -1145,11 +1186,15 @@ fun AmountInput(
         keyboardOptions = KeyboardOptions(
             keyboardType = KeyboardType.Decimal
         ),
-        cursorBrush = SolidColor(ComposeAppTheme.colors.leah),
+        cursorBrush = SolidColor(textColor),
         decorationBox = { innerTextField ->
             if (textFieldValue.text.isEmpty()) {
                 Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
-                    headline1_grey(text = "0")
+                    Text(
+                        text = "0",
+                        style = ComposeAppTheme.typography.headline1,
+                        color = ComposeAppTheme.colors.grey,
+                    )
                 }
             }
             innerTextField()

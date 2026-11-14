@@ -1,6 +1,5 @@
 package io.horizontalsystems.walletkit.modules.zcashnetwork
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -14,10 +13,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.Icon
-import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -33,32 +32,31 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil.compose.rememberAsyncImagePainter
 import io.horizontalsystems.walletkit.R
-import io.horizontalsystems.walletkit.core.imageUrl
 import io.horizontalsystems.walletkit.core.managers.ZcashLightWalletEndpointManager.ZcashEndpoint
 import io.horizontalsystems.walletkit.helpers.HudHelper
-import io.horizontalsystems.walletkit.modules.btcblockchainsettings.BlockchainSettingCell
 import io.horizontalsystems.walletkit.modules.nav3.HSNavigation
 import io.horizontalsystems.walletkit.modules.nav3.HSPage
-import io.horizontalsystems.walletkit.modules.walletconnect.list.ui.ActionsRow
-import io.horizontalsystems.walletkit.modules.walletconnect.list.ui.DraggableCardSimple
 import io.horizontalsystems.walletkit.modules.walletconnect.list.ui.getShape
 import io.horizontalsystems.walletkit.modules.walletconnect.list.ui.showDivider
 import io.horizontalsystems.walletkit.ui.compose.ComposeAppTheme
+import io.horizontalsystems.walletkit.uiv3.components.ConcealOnScroll
+import io.horizontalsystems.walletkit.uiv3.components.HSSwipeToReveal
 import io.horizontalsystems.walletkit.ui.compose.TranslatableString
-import io.horizontalsystems.walletkit.ui.compose.components.AppBar
 import io.horizontalsystems.walletkit.ui.compose.components.CellUniversalLawrenceSection
 import io.horizontalsystems.walletkit.ui.compose.components.HeaderText
 import io.horizontalsystems.walletkit.ui.compose.components.HsDivider
 import io.horizontalsystems.walletkit.ui.compose.components.HsIconButton
+import io.horizontalsystems.walletkit.ui.compose.components.HsSwitch
 import io.horizontalsystems.walletkit.ui.compose.components.MenuItem
+import io.horizontalsystems.walletkit.uiv3.components.PingBadge
 import io.horizontalsystems.walletkit.ui.compose.components.RowUniversal
 import io.horizontalsystems.walletkit.ui.compose.components.VSpacer
 import io.horizontalsystems.walletkit.ui.compose.components.body_jacob
+import io.horizontalsystems.walletkit.ui.compose.components.body_leah
 import io.horizontalsystems.walletkit.ui.compose.components.headline2_leah
 import io.horizontalsystems.walletkit.ui.compose.components.subhead2_grey
-import io.horizontalsystems.marketkit.models.BlockchainType
+import io.horizontalsystems.walletkit.uiv3.components.HSScaffold
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -81,70 +79,65 @@ private fun ZcashNetworkScreen(
 ) {
     val viewModel = viewModel<ZcashNetworkViewModel>(factory = ZcashNetworkModule.Factory())
     var revealedCardId by remember { mutableStateOf<String?>(null) }
+    val listState = rememberLazyListState()
+    ConcealOnScroll(listState) { revealedCardId = null }
     val view = LocalView.current
 
-    Surface(color = ComposeAppTheme.colors.tyler) {
-        Column {
-            AppBar(
-                title = viewModel.title,
-                navigationIcon = {
-                    Image(
-                        painter = rememberAsyncImagePainter(
-                            model = BlockchainType.Zcash.imageUrl,
-                            error = painterResource(R.drawable.ic_platform_placeholder_32)
-                        ),
-                        contentDescription = null,
-                        modifier = Modifier
-                            .padding(start = 14.dp)
-                            .size(24.dp)
-                    )
-                },
-                menuItems = listOf(
-                    MenuItem(
-                        title = TranslatableString.ResString(R.string.Button_Close),
-                        icon = R.drawable.ic_close,
-                        onClick = onBackPress
-                    )
-                )
+    HSScaffold(
+        title = viewModel.title,
+        onBack = onBackPress,
+        menuItems = listOf(
+            MenuItem(
+                title = TranslatableString.ResString(R.string.Button_Refresh),
+                icon = R.drawable.ic_refresh,
+                onClick = { viewModel.refresh() }
             )
+        ),
+    ) {
+        LazyColumn(modifier = Modifier.fillMaxWidth(), state = listState) {
 
-            LazyColumn(modifier = Modifier.fillMaxWidth()) {
-                item {
-                    VSpacer(12.dp)
-                    subhead2_grey(
-                        modifier = Modifier.padding(horizontal = 32.dp),
-                        text = stringResource(R.string.ZcashEndpointSettings_Description)
-                    )
-                    VSpacer(32.dp)
-                }
+            val autoSelect = viewModel.uiState.autoSelectEnabled
 
-                item {
-                    CellUniversalLawrenceSection(viewModel.uiState.defaultItems) { item ->
-                        BlockchainSettingCell(item.name, item.url, item.selected, null) {
-                            viewModel.onSelectEndpoint(item.endpoint)
-                        }
+            item {
+                VSpacer(12.dp)
+                subhead2_grey(
+                    modifier = Modifier.padding(horizontal = 32.dp),
+                    text = stringResource(R.string.ZcashEndpointSettings_Description)
+                )
+                VSpacer(24.dp)
+                AutoSelectCell(
+                    enabled = autoSelect,
+                    onCheckedChange = { viewModel.onToggleAutoSelect(it) }
+                )
+                VSpacer(24.dp)
+            }
+
+            item {
+                CellUniversalLawrenceSection(viewModel.uiState.defaultItems) { item ->
+                    ZcashEndpointRow(item, enabled = !autoSelect) {
+                        viewModel.onSelectEndpoint(item.endpoint)
                     }
                 }
+            }
 
-                if (viewModel.uiState.customItems.isNotEmpty()) {
-                    customEndpointListSection(
-                        items = viewModel.uiState.customItems,
-                        revealedCardId = revealedCardId,
-                        onClick = { viewModel.onSelectEndpoint(it) },
-                        onReveal = { id -> if (revealedCardId != id) revealedCardId = id },
-                        onConceal = { revealedCardId = null },
-                        onDelete = {
-                            viewModel.onRemoveCustomEndpoint(it)
-                            HudHelper.showErrorMessage(view, R.string.Hud_Removed)
-                        }
-                    )
-                }
+            if (viewModel.uiState.customItems.isNotEmpty()) {
+                customEndpointListSection(
+                    items = viewModel.uiState.customItems,
+                    revealedCardId = revealedCardId,
+                    onClick = { if (!autoSelect) viewModel.onSelectEndpoint(it) },
+                    onReveal = { id -> if (revealedCardId != id) revealedCardId = id },
+                    onConceal = { revealedCardId = null },
+                    onDelete = {
+                        viewModel.onRemoveCustomEndpoint(it)
+                        HudHelper.showErrorMessage(view, R.string.Hud_Removed)
+                    }
+                )
+            }
 
-                item {
-                    Spacer(Modifier.height(32.dp))
-                    AddButton { navigation.add(ZcashAddEndpointPage) }
-                    Spacer(Modifier.height(60.dp))
-                }
+            item {
+                Spacer(Modifier.height(32.dp))
+                AddButton { navigation.add(ZcashAddEndpointPage) }
+                Spacer(Modifier.height(60.dp))
             }
         }
     }
@@ -165,33 +158,27 @@ private fun LazyListScope.customEndpointListSection(
     itemsIndexed(items, key = { _, item -> item.id }) { index, item ->
         val showDivider = showDivider(items.size, index)
         val shape = getShape(items.size, index)
-        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            ActionsRow(
-                content = {
-                    HsIconButton(
-                        modifier = Modifier.fillMaxHeight().width(88.dp),
-                        onClick = { onDelete(item.endpoint) },
-                        content = {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_circle_minus_24),
-                                tint = ComposeAppTheme.colors.grey,
-                                contentDescription = "delete",
-                            )
-                        }
-                    )
-                }
-            )
-            DraggableCardSimple(
-                key = item.id,
-                isRevealed = revealedCardId == item.id,
-                cardOffset = 72f,
-                onReveal = { onReveal(item.id) },
-                onConceal = onConceal,
-                content = {
-                    ZcashEndpointCell(shape, showDivider, item) { onClick(item.endpoint) }
-                }
-            )
-        }
+        HSSwipeToReveal(
+            revealed = revealedCardId == item.id,
+            onReveal = { onReveal(item.id) },
+            onConceal = onConceal,
+            actions = {
+                HsIconButton(
+                    modifier = Modifier.fillMaxHeight().width(88.dp),
+                    onClick = { onDelete(item.endpoint) },
+                    content = {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_circle_minus_24),
+                            tint = ComposeAppTheme.colors.grey,
+                            contentDescription = "delete",
+                        )
+                    }
+                )
+            },
+            content = {
+                ZcashEndpointCell(shape, showDivider, item) { onClick(item.endpoint) }
+            }
+        )
     }
 }
 
@@ -224,13 +211,73 @@ private fun ZcashEndpointCell(
                 )
                 subhead2_grey(text = item.url)
             }
+            PingBadge(item.ping)
             if (item.selected) {
+                Spacer(Modifier.width(16.dp))
                 Icon(
                     painter = painterResource(R.drawable.ic_checkmark_20),
                     tint = ComposeAppTheme.colors.jacob,
                     contentDescription = null
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun AutoSelectCell(
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    CellUniversalLawrenceSection(
+        listOf {
+            RowUniversal(modifier = Modifier.padding(horizontal = 16.dp)) {
+                Column(modifier = Modifier.weight(1f)) {
+                    body_leah(text = stringResource(R.string.NetworkSettings_AutoSelect))
+                    Spacer(Modifier.height(1.dp))
+                    subhead2_grey(text = stringResource(R.string.ZcashEndpointSettings_AutoSelectDescription))
+                }
+                Spacer(Modifier.width(12.dp))
+                HsSwitch(
+                    checked = enabled,
+                    onCheckedChange = onCheckedChange,
+                )
+            }
+        }
+    )
+}
+
+@Composable
+private fun ZcashEndpointRow(
+    item: ZcashNetworkViewModel.ViewItem,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    RowUniversal(
+        onClick = if (enabled) onClick else null,
+        modifier = Modifier.padding(horizontal = 16.dp),
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            body_leah(
+                text = item.name.ifBlank { stringResource(R.string.WalletConnect_Unnamed) },
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(1.dp))
+            subhead2_grey(
+                text = item.url,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        PingBadge(item.ping)
+        if (item.selected) {
+            Spacer(Modifier.width(16.dp))
+            Icon(
+                painter = painterResource(R.drawable.ic_checkmark_20),
+                tint = ComposeAppTheme.colors.jacob,
+                contentDescription = null
+            )
         }
     }
 }

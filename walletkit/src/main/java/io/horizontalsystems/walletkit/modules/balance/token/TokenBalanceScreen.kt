@@ -19,7 +19,6 @@ import androidx.compose.material3.SheetState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,24 +32,21 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.LifecycleResumeEffect
 import io.horizontalsystems.walletkit.R
 import io.horizontalsystems.walletkit.core.Caution
+import io.horizontalsystems.walletkit.core.chain.ChainRegistry
 import io.horizontalsystems.walletkit.core.isCustom
-import io.horizontalsystems.walletkit.core.providers.Translator
 import io.horizontalsystems.walletkit.core.shorten
 import io.horizontalsystems.walletkit.core.stats.StatEvent
 import io.horizontalsystems.walletkit.core.stats.StatPage
 import io.horizontalsystems.walletkit.core.stats.stat
-import io.horizontalsystems.walletkit.core.App
 import io.horizontalsystems.walletkit.entities.Wallet
-import io.horizontalsystems.walletkit.core.chain.ChainRegistry
 import io.horizontalsystems.walletkit.helpers.HudHelper
 import io.horizontalsystems.walletkit.modules.balance.AttentionIconType
 import io.horizontalsystems.walletkit.modules.balance.BalanceViewItem
 import io.horizontalsystems.walletkit.modules.balance.DeemedValue
 import io.horizontalsystems.walletkit.modules.balance.LockedValue
-import io.horizontalsystems.walletkit.modules.balance.StellarLockedValue
+import io.horizontalsystems.walletkit.modules.balance.ReserveLockedValue
 import io.horizontalsystems.walletkit.modules.balance.ZcashLockedValue
 import io.horizontalsystems.walletkit.modules.balance.ui.BalanceActionButton
 import io.horizontalsystems.walletkit.modules.balance.ui.ZcashMigrationBottomSheet
@@ -58,11 +54,11 @@ import io.horizontalsystems.walletkit.modules.coin.CoinPage
 import io.horizontalsystems.walletkit.modules.multiswap.SwapPage
 import io.horizontalsystems.walletkit.modules.nav3.HSNavigation
 import io.horizontalsystems.walletkit.modules.receive.ReceivePage
-import io.horizontalsystems.walletkit.modules.send.address.EnterAddressPage
+import io.horizontalsystems.walletkit.modules.send.v2.SendV2Page
 import io.horizontalsystems.walletkit.modules.syncerror.SyncErrorSheet
 import io.horizontalsystems.walletkit.modules.transactionInfo.TransactionInfoPage
+import io.horizontalsystems.walletkit.modules.transactionInfo.TransactionInfoPayload
 import io.horizontalsystems.walletkit.modules.transactions.TransactionViewItem
-import io.horizontalsystems.walletkit.modules.transactions.TransactionsViewModel
 import io.horizontalsystems.walletkit.modules.transactions.transactionList
 import io.horizontalsystems.walletkit.ui.compose.ComposeAppTheme
 import io.horizontalsystems.walletkit.ui.compose.TranslatableString
@@ -89,8 +85,6 @@ import io.horizontalsystems.walletkit.uiv3.components.cell.hs
 import io.horizontalsystems.walletkit.uiv3.components.controls.ButtonVariant
 import io.horizontalsystems.walletkit.uiv3.components.controls.HSButton
 import io.horizontalsystems.walletkit.uiv3.components.info.TextBlock
-import io.horizontalsystems.marketkit.models.BlockchainType
-import io.horizontalsystems.walletkit.ui.compose.components.InfoTextBody
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -99,7 +93,6 @@ import kotlinx.coroutines.launch
 @Composable
 fun TokenBalanceScreen(
     viewModel: TokenBalanceViewModel,
-    transactionsViewModel: TransactionsViewModel,
     navigation: HSNavigation
 ) {
     val uiState = viewModel.uiState
@@ -116,15 +109,12 @@ fun TokenBalanceScreen(
 
     val loading = uiState.balanceViewItem?.syncingProgress?.progress != null
 
-    LifecycleResumeEffect(uiState.attentionIcon?.type) {
-        if (uiState.attentionIcon?.type == AttentionIconType.SyncError) {
-            coroutineScope.launch {
-                delay(300)
-                openSyncErrorDialog(uiState, navigation)
-            }
+    LaunchedEffect(uiState.showSyncErrorAlert) {
+        if (uiState.showSyncErrorAlert) {
+            delay(300)
+            openSyncErrorDialog(uiState, navigation)
+            viewModel.hideSyncErrorAlert()
         }
-
-        onPauseOrDispose { }
     }
 
     LaunchedEffect(uiState.showTronNotActiveAlert) {
@@ -224,6 +214,7 @@ fun TokenBalanceScreen(
                         receiveAddress = uiState.receiveAddress,
                         warning = uiState.warningMessage,
                         onClickReceive = onClickReceive,
+                        chartButtonEnabled = uiState.chartButtonEnabled,
                         trailingContent = trailingContent,
                     )
 
@@ -285,7 +276,6 @@ fun TokenBalanceScreen(
                         onTransactionClick(
                             it,
                             viewModel,
-                            transactionsViewModel,
                             navigation
                         )
                     },
@@ -296,10 +286,10 @@ fun TokenBalanceScreen(
     }
     bottomSheetContent?.let { lockedValue ->
         when (lockedValue) {
-            is StellarLockedValue -> {
-                StellarLockedBalanceBottomSheet(
+            is ReserveLockedValue -> {
+                ReserveLockedBalanceBottomSheet(
                     sheetState = bottomSheetState,
-                    stellarLockedValue = lockedValue,
+                    reserveLockedValue = lockedValue,
                     onClose = {
                         coroutineScope.launch {
                             bottomSheetState.hide()
@@ -447,11 +437,10 @@ private fun openSyncErrorDialog(
 private fun onTransactionClick(
     transactionViewItem: TransactionViewItem,
     tokenBalanceViewModel: TokenBalanceViewModel,
-    transactionsViewModel: TransactionsViewModel,
     navigation: HSNavigation
 ) {
     val transactionItem = tokenBalanceViewModel.getTransactionItem(transactionViewItem) ?: return
-    transactionsViewModel.tmpTransactionRecordToShow = transactionItem.record
+    TransactionInfoPayload.record = transactionItem.record
 
     navigation.slideFromBottom(TransactionInfoPage)
 
@@ -466,6 +455,7 @@ private fun TokenBalanceHeader(
     receiveAddress: String?,
     warning: String?,
     onClickReceive: () -> Unit,
+    chartButtonEnabled: Boolean,
     trailingContent: (@Composable () -> Unit)? = null,
 ) {
     val context = LocalContext.current
@@ -543,6 +533,7 @@ private fun TokenBalanceHeader(
             ButtonsRow(
                 viewItem = balanceViewItem,
                 navigation = navigation,
+                chartButtonEnabled = chartButtonEnabled,
                 onClickReceive = onClickReceive
             )
         }
@@ -742,9 +733,9 @@ fun ZcashLockedBalanceBottomSheet(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun StellarLockedBalanceBottomSheet(
+fun ReserveLockedBalanceBottomSheet(
     sheetState: SheetState,
-    stellarLockedValue: StellarLockedValue,
+    reserveLockedValue: ReserveLockedValue,
     onClose: () -> Unit
 ) {
     BottomSheetContent(
@@ -769,7 +760,7 @@ fun StellarLockedBalanceBottomSheet(
                 .border(1.dp, ComposeAppTheme.colors.blade, RoundedCornerShape(16.dp))
                 .padding(vertical = 8.dp)
         ) {
-            stellarLockedValue.lockedValues.forEach { item ->
+            reserveLockedValue.lockedValues.forEach { item ->
                 CellSecondary(
                     middle = {
                         CellMiddleInfo(
@@ -785,7 +776,7 @@ fun StellarLockedBalanceBottomSheet(
             }
         }
         TextBlock(
-            text = stringResource(R.string.Info_Reserved_Description),
+            text = reserveLockedValue.info.getString(),
         )
     }
 }
@@ -850,23 +841,26 @@ private fun LockedBalanceZcashCell(
 private fun ButtonsRow(
     viewItem: BalanceViewItem,
     navigation: HSNavigation,
+    chartButtonEnabled: Boolean,
     onClickReceive: () -> Unit
 ) {
     BalanceButtonsGroup {
-        BalanceActionButton(
-            variant = ButtonVariant.Primary,
-            icon = R.drawable.ic_balance_chart_24,
-            title = stringResource(R.string.Coin_Chart),
-            enabled = !viewItem.wallet.token.isCustom,
-            onClick = {
-                val coinUid = viewItem.wallet.coin.uid
-                val arguments = CoinPage.Input(coinUid)
+        if (chartButtonEnabled) {
+            BalanceActionButton(
+                variant = ButtonVariant.Primary,
+                icon = R.drawable.ic_balance_chart_24,
+                title = stringResource(R.string.Coin_Chart),
+                enabled = !viewItem.wallet.token.isCustom,
+                onClick = {
+                    val coinUid = viewItem.wallet.coin.uid
+                    val arguments = CoinPage.Input(coinUid)
 
-                navigation.slideFromRight(CoinPage(arguments))
+                    navigation.slideFromRight(CoinPage(arguments))
 
-                stat(page = StatPage.TokenPage, event = StatEvent.OpenCoin(coinUid))
-            },
-        )
+                    stat(page = StatPage.TokenPage, event = StatEvent.OpenCoin(coinUid))
+                },
+            )
+        }
         BalanceActionButton(
             variant = ButtonVariant.Secondary,
             icon = R.drawable.ic_arrow_down_24,
@@ -878,16 +872,7 @@ private fun ButtonsRow(
             icon = R.drawable.ic_arrow_up_24,
             title = stringResource(R.string.Balance_Send),
             onClick = {
-                val sendTitle = Translator.getString(
-                    R.string.Send_Title,
-                    viewItem.wallet.token.fullCoin.coin.code
-                )
-                navigation.slideFromRight(
-                    EnterAddressPage(EnterAddressPage.Input(
-                        wallet = viewItem.wallet,
-                        title = sendTitle
-                    ))
-                )
+                navigation.slideFromRight(SendV2Page(viewItem.wallet))
 
                 stat(
                     page = StatPage.TokenPage,

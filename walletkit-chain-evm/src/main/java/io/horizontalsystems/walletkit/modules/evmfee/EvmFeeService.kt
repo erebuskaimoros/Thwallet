@@ -6,7 +6,6 @@ import io.horizontalsystems.walletkit.entities.DataState
 import io.horizontalsystems.ethereumkit.core.EthereumKit
 import io.horizontalsystems.ethereumkit.models.GasPrice
 import io.horizontalsystems.ethereumkit.models.TransactionData
-import io.reactivex.Single
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -16,7 +15,6 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.rx2.await
 import java.math.BigInteger
 
 class EvmFeeService(
@@ -32,6 +30,11 @@ class EvmFeeService(
 
     private val evmBalance: BigInteger
         get() = evmKit.accountState?.balance ?: BigInteger.ZERO
+
+    // Null until the account state lands. A missing balance is not a zero balance, so a check
+    // that would reject the transfer has to read it through this and stand down while it is null.
+    private val knownEvmBalance: BigInteger?
+        get() = evmKit.accountState?.balance
 
     private val _transactionStatusFlow: MutableSharedFlow<DataState<Transaction>> =
         MutableSharedFlow(replay = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
@@ -75,7 +78,7 @@ class EvmFeeService(
         if (transactionData != null) {
             gasPriceInfoJob = coroutineScope.launch {
                 try {
-                    val transaction = feeDataSingle(gasPriceInfo, transactionData).await()
+                    val transaction = feeData(gasPriceInfo, transactionData)
                     sync(transaction)
                 } catch (e: CancellationException) {
                     // do nothing
@@ -88,52 +91,60 @@ class EvmFeeService(
         }
     }
 
-    private fun feeDataSingle(
+    private suspend fun feeData(
         gasPriceInfo: GasPriceInfo,
         transactionData: TransactionData
-    ): Single<Transaction> {
+    ): Transaction {
         val gasPrice = gasPriceInfo.gasPrice
         val gasPriceDefault = gasPriceInfo.gasPriceDefault
         val default = gasPriceInfo.default
         val warnings = gasPriceInfo.warnings
         val errors = gasPriceInfo.errors
 
-        return if (transactionData.input.isEmpty() && transactionData.value == evmBalance) {
-            gasDataSingle(gasPrice, gasPriceDefault, BigInteger.ONE, transactionData).map { gasData ->
-                val adjustedValue = transactionData.value - gasData.fee
-                if (adjustedValue <= BigInteger.ZERO) {
-                    throw FeeSettingsError.InsufficientBalance
-                } else {
-                    val transactionDataAdjusted = TransactionData(transactionData.to, adjustedValue, byteArrayOf())
-                    Transaction(transactionDataAdjusted, gasData, default, warnings, errors)
-                }
+        // Estimating a transfer that already exceeds the balance only earns an RPC refusal,
+        // whose wording decides whether the user sees a real reason or a raw node message. Only
+        // a balance that has actually loaded can refuse it: before that the estimate goes ahead,
+        // exactly as it did before this shortcut existed.
+        knownEvmBalance?.let { balance ->
+            if (transactionData.value > balance) {
+                throw FeeSettingsError.InsufficientBalance
             }
+        }
+
+        return if (transactionData.input.isEmpty() && transactionData.value == evmBalance) {
+            // The node refuses to estimate a transfer of the whole balance (value plus gas
+            // exceeds it), so estimate with a stub value. The amount is left as requested:
+            // sync() reports the shortfall, and a flow that wants to send the maximum reduces
+            // the amount by this fee and asks again.
+            val gasData = gasData(gasPrice, gasPriceDefault, BigInteger.ONE, transactionData)
+            Transaction(transactionData, gasData, default, warnings, errors)
         } else {
-            gasDataSingle(gasPrice, gasPriceDefault, null, transactionData)
-                .map { gasData ->
-                    Transaction(transactionData, gasData, default, warnings, errors)
-                }
+            val gasData = gasData(gasPrice, gasPriceDefault, null, transactionData)
+            Transaction(transactionData, gasData, default, warnings, errors)
         }
     }
 
-    private fun gasDataSingle(
+    private suspend fun gasData(
         gasPrice: GasPrice,
         gasPriceDefault: GasPrice,
         stubAmount: BigInteger? = null,
         transactionData: TransactionData
-    ): Single<GasData> {
-        return gasDataService.estimatedGasDataAsync(gasPrice, transactionData, stubAmount)
-            .onErrorResumeNext { error ->
-                if (error.convertedError == EvmError.LowerThanBaseGasLimit) {
-                    gasDataService.estimatedGasDataAsync(gasPriceDefault, transactionData, stubAmount)
-                        .map {
-                            it.gasPrice = gasPrice
-                            it
-                        }
-                } else {
-                    Single.error(error)
+    ): GasData {
+        // An explicit gas limit is applied inside the gas data service, so rollup and Mantle
+        // services still add their L1 fee to a transaction with a predefined limit.
+        return try {
+            gasDataService.estimatedGasData(gasPrice, transactionData, stubAmount)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (error: Throwable) {
+            if (error.convertedError == EvmError.LowerThanBaseGasLimit) {
+                gasDataService.estimatedGasData(gasPriceDefault, transactionData, stubAmount).also {
+                    it.gasPrice = gasPrice
                 }
+            } else {
+                throw error
             }
+        }
     }
 
     private fun sync(transaction: Transaction) {

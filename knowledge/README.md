@@ -46,7 +46,10 @@ the product composition root.
 ## Six-chain EVM expansion
 
 Thwallet's local EVM catalog adds Cronos (25), Blast (81457), Mantle (5000),
-Sei EVM (1329), HyperEVM (999), and Robinhood Chain (4663). The catalog owns
+Sei EVM (1329), and HyperEVM (999). Robinhood Chain (4663) left the catalog in
+the November 2026 synchronization: upstream market-kit and ethereum-kit now
+model it as a first-class chain under the same persisted `robinhood` UID, so
+existing wallets resolve to upstream's type without a migration. The catalog owns
 the chain metadata and native-token fallbacks, while `MarketKitWrapper`
 normalizes compatible remote token rows and rejects legacy contract rows whose
 decimals are unknown. This keeps EVM-specific catalog and normalization logic
@@ -59,19 +62,21 @@ while its HYPE coin uses `hyperliquid`; Sei EVM retains MarketKit's current
 because enabled-wallet and backup records embed it in `TokenQuery.id`.
 
 MarketKit is no longer entirely upstream. The build pins the Thwallet-owned
-MarketKit fork at `7e7e05d4118945efca68d4545afcb5c1933e1e5b`; that fork adds only
-first-class Dogecoin metadata. The six-chain EVM catalog and its data
+MarketKit fork at `c75877481160058920ce0c5cb82dcadeea60e32d` (upstream `73387dd`
+plus one commit); that fork adds only first-class Dogecoin metadata. The EVM
+catalog and its data
 normalization remain a local Thwallet overlay rather than MarketKit fork
 changes.
 
 EthereumKit's chain model is a closed enum used by signing and transaction
 assembly, so the build pins the Thwallet-owned `ethereum-kit-android` fork at
-`6790cb77328403ca52e932f5fa0a9f3509f9054f`. The fork adds the six chain IDs,
+`8048cb1569fd89bd7c84123b10c4c08d6ba3cbeb` (upstream `a887150` plus two
+commits). The fork adds the five catalog chain IDs,
 RPC-only history support, Mantle's additional L1-data/operator fee model, and
 receipt reconciliation for locally submitted RPC-only transactions. The app
 supplies its own RPC and history-provider configuration.
 
-All six networks support EVM derivation, balances, native and EIP-20 wallets,
+All five catalog networks support EVM derivation, balances, native and EIP-20 wallets,
 send/receive, WalletConnect chain recognition, and explorer links. Cronos is
 currently RPC-only because its current explorer API requires credentials, so
 incoming indexed history is unavailable there. Locally submitted Cronos
@@ -89,7 +94,8 @@ expansion is not by itself a release security review.
 
 Dogecoin is implemented as a native-only chain through the Thwallet-owned
 `bitcoin-kit-android` fork pinned at
-`42d8991111fc7336bc05a31cbbdb0ebfd1280f73`. This immutable fork commit adds
+`a3db60f4ff09d06929f7b32bebfae3a37b5f5529` (upstream `1f581d1` plus two
+commits). This fork commit adds
 native DOGE consensus, persistence, signing, and transport support. Wallet
 derivation uses BIP44 coin type 3 and P2PKH receive/change addresses. A valid
 Dogecoin P2SH address is accepted
@@ -148,6 +154,33 @@ exercise adversarial reorg behavior; run Android instrumentation coverage;
 establish reproducible builds; and obtain an independent security review of
 derivation, parsing, consensus validation, transaction construction, signing,
 and broadcasting.
+
+## November 2026 synchronization
+
+Thwallet merged upstream `master` through `be15af281` (557 commits) on the
+`upstream-sync` branch. Upstream removed RxJava throughout, so all three
+Thwallet kit forks were rebased onto the coroutine-based upstream kits and
+re-pinned (see the sections above).
+
+Decisions recorded by the maintainer on 2026-11-14:
+
+- **Native THORChain swaps stay.** Upstream deleted its native THORChain and
+  Maya providers and now quotes both through its own USwap backend. Thwallet
+  keeps `ThorChainProvider`/`BaseThorChainProvider` (with upstream's last
+  memo-destination validation merged in), restores the `ChainPlugin.swapProviders()`
+  hook upstream removed, and omits the `USwapProvider(UProvider.ThorChain)`
+  registry entry so THORChain is quoted only directly, with no wallet
+  affiliate. Maya, 1inch, Uniswap and Stellar follow upstream through USwap.
+  A THORkit backend is expected to replace this path later.
+- **XRP follows upstream.** Upstream's `walletkit-chain-xrp` (persisted UID
+  `xrp`, `xrpKit`, issued-token support) is adopted. Thwallet's own
+  `xrp-support` branch (`ripple|native`, hand-written codec) is superseded and
+  must not be merged. iOS must use the same `xrp` identifier; until the iOS
+  repository records that, this is an open cross-platform parity gap.
+- **Upstream's `AGENTS.md` is not adopted**; Thwallet's own file is kept.
+
+Upstream's server-published route score is keyed by provider id, so the native
+`thorchain` provider shows no route score unless the backend lists that id.
 
 ## August 2026 synchronization baseline
 

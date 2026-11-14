@@ -17,7 +17,6 @@ class EvmKitManagerRegistryTest {
         EvmNetworkCatalog.mantle to Chain.Mantle,
         EvmNetworkCatalog.sei to Chain.Sei,
         EvmNetworkCatalog.hyperEvm to Chain.HyperEvm,
-        EvmNetworkCatalog.robinhood to Chain.Robinhood,
     )
 
     @Test

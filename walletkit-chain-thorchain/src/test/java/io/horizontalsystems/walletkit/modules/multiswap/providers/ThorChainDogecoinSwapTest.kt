@@ -24,7 +24,6 @@ class ThorChainDogecoinSwapTest {
     ) {
         override val id = "test"
         override val title = "Test"
-        override val riskLevel = RiskLevel.EXCELLENT
 
         suspend fun dogecoinSendData(
             token: Token,

@@ -1,6 +1,8 @@
 package io.horizontalsystems.walletkit.modules.transactionInfo
 
 import io.horizontalsystems.walletkit.core.ITransactionsAdapter
+import io.horizontalsystems.walletkit.core.adapters.NearTransactionRecord
+import io.horizontalsystems.walletkit.core.adapters.XrpTransactionRecord
 import io.horizontalsystems.walletkit.core.adapters.StellarTransactionRecord
 import io.horizontalsystems.walletkit.core.adapters.TonTransactionRecord
 import io.horizontalsystems.walletkit.core.managers.CurrencyManager
@@ -46,8 +48,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.reactive.asFlow
-import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
 import java.math.BigDecimal
 
@@ -86,6 +86,14 @@ class TransactionInfoService(
 
             val txCoinTypes = when (val tx = transactionRecord) {
                 is StellarTransactionRecord -> listOf(tx.mainValue?.coinUid, tx.fee?.coinUid)
+                is XrpTransactionRecord -> listOf(tx.mainValue?.coinUid, tx.fee.coinUid)
+                is NearTransactionRecord -> buildList {
+                    add(tx.mainValue?.coinUid)
+                    add(tx.fee?.coinUid)
+                    (tx.type as? NearTransactionRecord.Type.ContractCall)?.let { call ->
+                        (call.incoming + call.outgoing).forEach { add(it.value.coinUid) }
+                    }
+                }
                 is TonTransactionRecord -> buildList {
                     add(tx.mainValue?.coinUid)
                     add(tx.fee.coinUid)
@@ -225,7 +233,7 @@ class TransactionInfoService(
         }
 
         launch {
-            adapter.lastBlockUpdatedFlowable.asFlow()
+            adapter.lastBlockUpdatedFlow
                 .collect {
                     handleLastBlockUpdate()
                 }
@@ -260,8 +268,7 @@ class TransactionInfoService(
             try {
                 val rate = marketKit
                     .coinHistoricalPriceSingle(coinUid, currencyManager.baseCurrency.code, timestamp)
-                    .await()
-                if (rate != BigDecimal.ZERO) {
+                if (rate != null && rate != BigDecimal.ZERO) {
                     Pair(coinUid, CurrencyValue(currencyManager.baseCurrency, rate))
                 } else {
                     null

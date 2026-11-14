@@ -25,13 +25,12 @@ class EvmNetworkCatalogTest {
         EvmNetworkCatalog.mantle to 5000L,
         EvmNetworkCatalog.sei to 1329L,
         EvmNetworkCatalog.hyperEvm to 999L,
-        EvmNetworkCatalog.robinhood to 4663L,
     )
 
     @Test
     fun `catalog keeps stable unique blockchain uids and chain ids`() {
         assertEquals(
-            listOf("cronos", "blast", "mantle", "sei-network", "hyperevm", "robinhood"),
+            listOf("cronos", "blast", "mantle", "sei-network", "hyperevm"),
             EvmNetworkCatalog.blockchainTypes.map { it.uid },
         )
         assertEquals(
@@ -54,7 +53,7 @@ class EvmNetworkCatalogTest {
             EvmNetworkCatalog.blockchains.map { it.type },
         )
         assertEquals(
-            listOf("CRO", "ETH", "MNT", "SEI", "HYPE", "ETH"),
+            listOf("CRO", "ETH", "MNT", "SEI", "HYPE"),
             EvmNetworkCatalog.nativeTokens.map { it.coin.code },
         )
 
@@ -215,7 +214,7 @@ class EvmNetworkCatalogTest {
         assertEquals(2, ethereum.coin.marketCapRank)
         assertEquals("https://example.com/eth.png", ethereum.coin.image)
         assertEquals(
-            setOf(BlockchainType.Ethereum, EvmNetworkCatalog.blast, EvmNetworkCatalog.robinhood),
+            setOf(BlockchainType.Ethereum, EvmNetworkCatalog.blast),
             ethereum.tokens.map { it.blockchainType }.toSet(),
         )
 

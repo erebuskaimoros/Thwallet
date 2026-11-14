@@ -2,6 +2,7 @@ package io.horizontalsystems.walletkit.core.managers
 
 import io.horizontalsystems.walletkit.core.AppLogger
 import io.horizontalsystems.walletkit.core.IAccountManager
+import io.horizontalsystems.walletkit.core.blockedEip20Addresses
 import io.horizontalsystems.walletkit.entities.Account
 import io.horizontalsystems.walletkit.entities.AccountOrigin
 import io.horizontalsystems.walletkit.entities.EnabledWallet
@@ -26,11 +27,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.flow.cancellable
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.reactive.asFlow
-import kotlinx.coroutines.rx2.asFlow
-import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
 import java.math.BigInteger
 import java.util.concurrent.Executors
@@ -51,8 +48,7 @@ class EvmAccountManager(
 
     init {
         singleDispatcherCoroutineScope.launch {
-            evmKitManager.kitStartedObservable
-                .asFlow()
+            evmKitManager.kitStartedFlow
                 .collect { started ->
                     handleStarted(started)
                 }
@@ -79,12 +75,23 @@ class EvmAccountManager(
         val evmKitWrapper = evmKitManager.evmKitWrapper ?: return
         val account = accountManager.activeAccount ?: return
 
+        // kitStartedFlow is a StateFlow and may conflate a rapid false -> true, so the
+        // collector for the previous wrapper has to be dropped here, not only on `false`.
+        transactionSubscriptionJob?.cancel()
         transactionSubscriptionJob = coroutineScope.launch {
-            evmKitWrapper.evmKit.allTransactionsFlowable.asFlow().cancellable()
+            evmKitWrapper.evmKit.allTransactionsFlow
                 .collect { (fullTransactions, initial) ->
                     handle(fullTransactions, account, evmKitWrapper, initial)
                 }
         }
+    }
+
+    // Auto-enabling the native coin's ERC-20 interface would create a duplicate of the
+    // native wallet (on ZkSync a permanently unsyncable one: every eth_call on the L2 ETH
+    // system contract reverts since protocol upgrade v24).
+    private fun isBlockedTokenType(tokenType: TokenType): Boolean {
+        val address = (tokenType as? TokenType.Eip20)?.address ?: return false
+        return blockchainType.blockedEip20Addresses.any { it.equals(address, ignoreCase = true) }
     }
 
     private fun handle(fullTransactions: List<FullTransaction>, account: Account, evmKitWrapper: EvmKitWrapper, initial: Boolean) {
@@ -156,8 +163,8 @@ class EvmAccountManager(
         }
 
         handle(
-            foundTokens = foundTokens.toList(),
-            suspiciousTokenTypes = suspiciousTokenTypes.minus(foundTokens.map { it.tokenType }.toSet()).toList(),
+            foundTokens = foundTokens.filterNot { isBlockedTokenType(it.tokenType) },
+            suspiciousTokenTypes = suspiciousTokenTypes.minus(foundTokens.map { it.tokenType }.toSet()).filterNot(::isBlockedTokenType),
             account = account,
             evmKit = evmKitWrapper.evmKit
         )
@@ -238,6 +245,7 @@ class EvmAccountManager(
     }
 
     private suspend fun handle(tokenInfos: List<TokenInfo>, account: Account, evmKit: EthereumKit) = withContext(Dispatchers.IO) {
+        if (!tokenAutoEnableManager.autoEnableTokensOnReceive) return@withContext
 //        Log.e("AAA", "handle tokens ${tokenInfos.size} \n ${tokenInfos.joinToString(separator = " ") { it.type.id }}")
 
         val existingWallets = walletManager.activeWallets
@@ -263,7 +271,7 @@ class EvmAccountManager(
             async {
                 if (contractAddress != null) {
                     val balance = try {
-                        dataProvider.getBalance(contractAddress, userAddress).await()
+                        dataProvider.getBalance(contractAddress, userAddress)
                     } catch (error: Throwable) {
                         null
                     }

@@ -39,13 +39,13 @@ import io.horizontalsystems.walletkit.R
 import io.horizontalsystems.walletkit.SnackbarDuration
 import io.horizontalsystems.walletkit.core.App
 import io.horizontalsystems.walletkit.core.Caution
+import io.horizontalsystems.walletkit.core.launchSafe
 import io.horizontalsystems.walletkit.helpers.HudHelper
 import io.horizontalsystems.walletkit.modules.contacts.ContactsModule
 import io.horizontalsystems.walletkit.modules.contacts.model.Contact
 import io.horizontalsystems.walletkit.modules.contacts.viewmodel.ContactsViewModel
 import io.horizontalsystems.walletkit.ui.compose.ComposeAppTheme
 import io.horizontalsystems.walletkit.ui.compose.TranslatableString
-import io.horizontalsystems.walletkit.ui.compose.components.ButtonPrimaryYellow
 import io.horizontalsystems.walletkit.ui.compose.components.HsDivider
 import io.horizontalsystems.walletkit.ui.compose.components.ListEmptyView
 import io.horizontalsystems.walletkit.ui.compose.components.MenuItem
@@ -61,6 +61,7 @@ import io.horizontalsystems.walletkit.uiv3.components.menu.MenuGroup
 import io.horizontalsystems.walletkit.uiv3.components.menu.MenuItemX
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import io.horizontalsystems.walletkit.uiv3.components.controls.HSButton
 
 enum class ContactsScreenBottomSheetType {
     ReplaceAddressConfirmation, RestoreContactsConfirmation
@@ -86,8 +87,10 @@ fun ContactsScreen(
     val restoreLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             uri?.let {
-                context.contentResolver.openInputStream(it)?.use { inputStream ->
-                    try {
+                // openInputStream itself can throw (picked file deleted, cloud
+                // provider failed to stream) — keep it inside the try.
+                try {
+                    (context.contentResolver.openInputStream(it) ?: error("Unable to open file")).use { inputStream ->
                         inputStream.bufferedReader().use { br ->
                             viewModel.restore(br.readText())
 
@@ -97,9 +100,9 @@ fun ContactsScreen(
                                 SnackbarDuration.SHORT
                             )
                         }
-                    } catch (e: Throwable) {
-                        HudHelper.showErrorMessage(view, e.message ?: e.javaClass.simpleName)
                     }
+                } catch (e: Throwable) {
+                    HudHelper.showErrorMessage(view, e.message ?: e.javaClass.simpleName)
                 }
             }
         }
@@ -107,8 +110,8 @@ fun ContactsScreen(
     val backupLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
             uri?.let {
-                context.contentResolver.openOutputStream(uri)?.use { outputStream ->
-                    try {
+                try {
+                    (context.contentResolver.openOutputStream(uri) ?: error("Unable to open file")).use { outputStream ->
                         outputStream.bufferedWriter().use { bw ->
                             bw.write(viewModel.backupJson)
                             bw.flush()
@@ -119,9 +122,9 @@ fun ContactsScreen(
                                 SnackbarDuration.SHORT
                             )
                         }
-                    } catch (e: Throwable) {
-                        HudHelper.showErrorMessage(view, e.message ?: e.javaClass.simpleName)
                     }
+                } catch (e: Throwable) {
+                    HudHelper.showErrorMessage(view, e.message ?: e.javaClass.simpleName)
                 }
             }
         }
@@ -223,7 +226,7 @@ fun ContactsScreen(
                         text = stringResource(R.string.Contacts_NoContacts),
                         icon = R.drawable.icon_user_plus
                     ) {
-                        ButtonPrimaryYellow(
+                        HSButton(
                             modifier = Modifier
                                 .padding(horizontal = 48.dp)
                                 .fillMaxWidth(),
@@ -249,13 +252,13 @@ fun ContactsScreen(
                                 if (viewModel.shouldShowRestoreWarning()) {
                                     bottomSheetType = ContactsScreenBottomSheetType.RestoreContactsConfirmation
                                 } else {
-                                    restoreLauncher.launch(arrayOf("application/json"))
+                                    restoreLauncher.launchSafe(arrayOf("application/json"), view)
                                 }
                             }
 
                             ContactsModule.ContactsAction.Backup -> {
                                 App.pinComponent.keepUnlocked()
-                                backupLauncher.launch(viewModel.backupFileName)
+                                backupLauncher.launchSafe(viewModel.backupFileName, view)
                             }
                         }
                     })
@@ -324,7 +327,7 @@ fun ContactsScreen(
                                 coroutineScope.launch {
                                     bottomSheetState.hide()
                                     bottomSheetType = null
-                                    restoreLauncher.launch(arrayOf("application/json"))
+                                    restoreLauncher.launchSafe(arrayOf("application/json"), view)
                                 }
                             },
                             onClose = {

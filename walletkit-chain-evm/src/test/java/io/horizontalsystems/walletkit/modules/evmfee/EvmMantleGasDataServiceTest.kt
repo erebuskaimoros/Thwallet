@@ -5,7 +5,7 @@ import io.horizontalsystems.ethereumkit.core.rollup.MantleFeeProvider
 import io.horizontalsystems.ethereumkit.models.Address
 import io.horizontalsystems.ethereumkit.models.GasPrice
 import io.horizontalsystems.ethereumkit.models.TransactionData
-import io.reactivex.Single
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -18,7 +18,7 @@ class EvmMantleGasDataServiceTest {
 
     private val recipient = Address("0x2222222222222222222222222222222222222222")
     @Test
-    fun `additional fee uses estimated gas while signing keeps surcharged gas`() {
+    fun `additional fee uses estimated gas while signing keeps surcharged gas`() = runBlocking<Unit> {
         val evmKit = mock(EthereumKit::class.java)
         val mantleFeeProvider = mock(MantleFeeProvider::class.java)
         val gasPrice = GasPrice.Eip1559(100, 2)
@@ -31,7 +31,7 @@ class EvmMantleGasDataServiceTest {
             byteArrayOf(1, 2, 3),
         )
         `when`(evmKit.estimateGas(transactionData, gasPrice))
-            .thenReturn(Single.just(estimatedGasLimit))
+            .thenReturn(estimatedGasLimit)
         `when`(
             mantleFeeProvider.getAdditionalFee(
                 estimatedGasLimit,
@@ -39,7 +39,7 @@ class EvmMantleGasDataServiceTest {
                 transactionData.value,
                 transactionData.input,
             ),
-        ).thenReturn(Single.just(expectedAdditionalFee))
+        ).thenReturn(expectedAdditionalFee)
         `when`(
             mantleFeeProvider.getAdditionalFee(
                 surchargedGasLimit,
@@ -47,11 +47,10 @@ class EvmMantleGasDataServiceTest {
                 transactionData.value,
                 transactionData.input,
             ),
-        ).thenReturn(Single.just(expectedAdditionalFee))
+        ).thenReturn(expectedAdditionalFee)
 
         val gasData = EvmMantleGasDataService(evmKit, mantleFeeProvider)
-            .estimatedGasDataAsync(gasPrice, transactionData, null)
-            .blockingGet()
+            .estimatedGasData(gasPrice, transactionData, null)
 
         assertTrue(gasData is RollupGasData)
         assertEquals(estimatedGasLimit, gasData.estimatedGasLimit)
@@ -66,7 +65,7 @@ class EvmMantleGasDataServiceTest {
     }
 
     @Test
-    fun `send-all stub value is used for gas and Mantle total-fee estimation`() {
+    fun `send-all stub value is used for gas and Mantle total-fee estimation`() = runBlocking<Unit> {
         val evmKit = mock(EthereumKit::class.java)
         val mantleFeeProvider = mock(MantleFeeProvider::class.java)
         val gasPrice = GasPrice.Eip1559(100, 2)
@@ -82,7 +81,7 @@ class EvmMantleGasDataServiceTest {
             transactionData.input,
         )
         `when`(evmKit.estimateGas(stubTransactionData, gasPrice))
-            .thenReturn(Single.just(21_000L))
+            .thenReturn(21_000L)
         `when`(
             mantleFeeProvider.getAdditionalFee(
                 21_000L,
@@ -90,11 +89,10 @@ class EvmMantleGasDataServiceTest {
                 stubAmount,
                 transactionData.input,
             ),
-        ).thenReturn(Single.just(BigInteger.valueOf(123)))
+        ).thenReturn(BigInteger.valueOf(123))
 
         EvmMantleGasDataService(evmKit, mantleFeeProvider)
-            .estimatedGasDataAsync(gasPrice, transactionData, stubAmount)
-            .blockingGet()
+            .estimatedGasData(gasPrice, transactionData, stubAmount)
 
         verify(evmKit).estimateGas(stubTransactionData, gasPrice)
         verify(mantleFeeProvider).getAdditionalFee(
@@ -106,7 +104,7 @@ class EvmMantleGasDataServiceTest {
     }
 
     @Test
-    fun `explicit provider gas is retained while estimated gas decomposes Mantle fee`() {
+    fun `explicit provider gas is retained while estimated gas decomposes Mantle fee`() = runBlocking<Unit> {
         val evmKit = mock(EthereumKit::class.java)
         val mantleFeeProvider = mock(MantleFeeProvider::class.java)
         val gasPrice = GasPrice.Eip1559(100, 2)
@@ -119,7 +117,7 @@ class EvmMantleGasDataServiceTest {
             byteArrayOf(1, 2, 3),
         )
         `when`(evmKit.estimateGas(transactionData, gasPrice))
-            .thenReturn(Single.just(estimatedGasLimit))
+            .thenReturn(estimatedGasLimit)
         `when`(
             mantleFeeProvider.getAdditionalFee(
                 estimatedGasLimit,
@@ -127,7 +125,7 @@ class EvmMantleGasDataServiceTest {
                 transactionData.value,
                 transactionData.input,
             ),
-        ).thenReturn(Single.just(expectedAdditionalFee))
+        ).thenReturn(expectedAdditionalFee)
         `when`(
             mantleFeeProvider.getAdditionalFee(
                 explicitGasLimit,
@@ -135,13 +133,13 @@ class EvmMantleGasDataServiceTest {
                 transactionData.value,
                 transactionData.input,
             ),
-        ).thenReturn(Single.just(expectedAdditionalFee))
+        ).thenReturn(expectedAdditionalFee)
 
         val gasData = EvmMantleGasDataService(
             evmKit,
             mantleFeeProvider,
             predefinedGasLimit = explicitGasLimit,
-        ).estimatedGasDataAsync(gasPrice, transactionData, null).blockingGet()
+        ).estimatedGasData(gasPrice, transactionData, null)
 
         verify(evmKit).estimateGas(transactionData, gasPrice)
         verify(mantleFeeProvider).getAdditionalFee(

@@ -50,7 +50,10 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.PermissionStatus
 import com.google.accompanist.permissions.rememberPermissionState
@@ -62,6 +65,7 @@ import com.google.zxing.qrcode.QRCodeReader
 import com.journeyapps.barcodescanner.CompoundBarcodeView
 import com.journeyapps.barcodescanner.ScanOptions
 import io.horizontalsystems.walletkit.R
+import io.horizontalsystems.walletkit.core.App
 import io.horizontalsystems.walletkit.core.BaseActivity
 import io.horizontalsystems.walletkit.core.utils.ModuleField
 import io.horizontalsystems.walletkit.helpers.HudHelper
@@ -69,8 +73,6 @@ import io.horizontalsystems.walletkit.ui.compose.Bright
 import io.horizontalsystems.walletkit.ui.compose.ComposeAppTheme
 import io.horizontalsystems.walletkit.ui.compose.components.AppBar
 import io.horizontalsystems.walletkit.ui.compose.components.ButtonPrimaryDefaults
-import io.horizontalsystems.walletkit.ui.compose.components.ButtonPrimaryTransparent
-import io.horizontalsystems.walletkit.ui.compose.components.ButtonPrimaryYellow
 import io.horizontalsystems.walletkit.ui.compose.components.HsIconButton
 import io.horizontalsystems.walletkit.ui.compose.components.body_leah
 import io.horizontalsystems.walletkit.ui.compose.components.subhead2_grey
@@ -78,11 +80,31 @@ import io.horizontalsystems.walletkit.ui.compose.components.title3_leah
 import io.horizontalsystems.walletkit.ui.helpers.TextHelper
 import io.horizontalsystems.walletkit.uiv3.components.controls.ButtonVariant
 import io.horizontalsystems.walletkit.uiv3.components.controls.HSButton
+import kotlinx.coroutines.launch
+import io.horizontalsystems.walletkit.uiv3.components.controls.ButtonStyle
 
 class QRScannerActivity : BaseActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // The scanner is a separate activity, so the unlock overlay drawn inside MainActivity
+        // doesn't cover it: a scanner left open when the app auto-locks would keep accepting QR
+        // codes (WalletConnect pairing, addresses) behind the lock screen. Close it instead, which
+        // brings MainActivity and its unlock keypad back to the front.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.CREATED) {
+                App.pinComponent.isLockedFlow.collect { isLocked ->
+                    if (isLocked) {
+                        // onScan() sets RESULT_OK a full second before it finishes, so overwrite
+                        // the result here: a code scanned just as the app locks must not reach the
+                        // launcher and be acted on behind the lock screen.
+                        setResult(RESULT_CANCELED)
+                        finish()
+                    }
+                }
+            }
+        }
 
         setContent {
             ComposeAppTheme {
@@ -97,6 +119,12 @@ class QRScannerActivity : BaseActivity() {
     }
 
     private fun onScan(address: String?) {
+        if (App.pinComponent.isLocked) {
+            setResult(RESULT_CANCELED)
+            finish()
+            return
+        }
+
         setResult(RESULT_OK, Intent().apply {
             putExtra(ModuleField.SCAN_ADDRESS, address)
         })
@@ -361,12 +389,14 @@ private fun PermissionNeededDialog(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End
             ) {
-                ButtonPrimaryTransparent(
+                HSButton(
+                    variant = ButtonVariant.Secondary,
+                    style = ButtonStyle.Transparent,
                     onClick = onCancelClick,
                     title = stringResource(R.string.Button_Cancel)
                 )
                 Spacer(Modifier.width(8.dp))
-                ButtonPrimaryYellow(
+                HSButton(
                     onClick = onOkClick,
                     title = stringResource(R.string.Button_Ok)
                 )

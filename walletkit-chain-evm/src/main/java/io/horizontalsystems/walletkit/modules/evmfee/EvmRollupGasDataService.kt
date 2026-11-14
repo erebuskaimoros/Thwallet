@@ -5,7 +5,6 @@ import io.horizontalsystems.ethereumkit.core.hexStringToBigIntegerOrNull
 import io.horizontalsystems.ethereumkit.core.rollup.L1FeeProvider
 import io.horizontalsystems.ethereumkit.models.GasPrice
 import io.horizontalsystems.ethereumkit.models.TransactionData
-import io.reactivex.Single
 import java.math.BigInteger
 
 class EvmRollupGasDataService(
@@ -14,25 +13,22 @@ class EvmRollupGasDataService(
     predefinedGasLimit: Long? = null
 ) : EvmCommonGasDataService(evmKit, predefinedGasLimit) {
 
-    override fun estimatedGasDataAsync(gasPrice: GasPrice, transactionData: TransactionData, stubAmount: BigInteger?): Single<GasData> {
+    override suspend fun estimatedGasData(gasPrice: GasPrice, transactionData: TransactionData, stubAmount: BigInteger?): GasData {
         val explicitGasLimit = predefinedGasLimit
         return if (explicitGasLimit != null) {
-            l1GasFee(transactionData, gasPrice, explicitGasLimit).map { l1Fee ->
-                RollupGasData(gasLimit = explicitGasLimit, gasPrice = gasPrice, l1Fee = l1Fee)
-            }
+            val l1Fee = l1GasFee(transactionData, gasPrice, explicitGasLimit)
+            RollupGasData(gasLimit = explicitGasLimit, gasPrice = gasPrice, l1Fee = l1Fee)
         } else {
-            super.estimatedGasDataAsync(gasPrice, transactionData, stubAmount).flatMap { gasData ->
-                val gasLimit = gasData.gasLimit
-                val stubTransactionData = if (stubAmount != null) {
-                    TransactionData(transactionData.to, maxBytes(transactionData.value), transactionData.input)
-                } else {
-                    transactionData
-                }
-
-                l1GasFee(stubTransactionData, gasPrice, gasLimit).map { l1Fee ->
-                    RollupGasData(gasLimit = gasLimit, gasPrice = gasPrice, l1Fee = l1Fee)
-                }
+            val gasData = super.estimatedGasData(gasPrice, transactionData, stubAmount)
+            val gasLimit = gasData.gasLimit
+            val stubTransactionData = if (stubAmount != null) {
+                TransactionData(transactionData.to, maxBytes(transactionData.value), transactionData.input)
+            } else {
+                transactionData
             }
+
+            val l1Fee = l1GasFee(stubTransactionData, gasPrice, gasLimit)
+            RollupGasData(gasLimit = gasLimit, gasPrice = gasPrice, l1Fee = l1Fee)
         }
     }
 
@@ -43,7 +39,7 @@ class EvmRollupGasDataService(
         return maximumHexValue.hexStringToBigIntegerOrNull() ?: value
     }
 
-    private fun l1GasFee(transactionData: TransactionData, gasPrice: GasPrice, gasLimit: Long): Single<BigInteger> =
+    private suspend fun l1GasFee(transactionData: TransactionData, gasPrice: GasPrice, gasLimit: Long): BigInteger =
         l1FeeProvider.getL1Fee(gasPrice, gasLimit, transactionData.to, transactionData.value, transactionData.input)
 
 }

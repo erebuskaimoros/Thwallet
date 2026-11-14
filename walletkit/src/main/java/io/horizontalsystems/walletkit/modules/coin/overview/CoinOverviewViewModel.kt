@@ -11,6 +11,9 @@ import io.horizontalsystems.walletkit.R
 import io.horizontalsystems.walletkit.core.IAccountManager
 import io.horizontalsystems.walletkit.core.accountTypeDerivation
 import io.horizontalsystems.walletkit.core.assetUrl
+import io.horizontalsystems.walletkit.core.displayCode
+import io.horizontalsystems.walletkit.core.nep141TokenUrl
+import io.horizontalsystems.walletkit.core.xrpAssetUrl
 import io.horizontalsystems.walletkit.core.bitcoinCashCoinType
 import io.horizontalsystems.walletkit.core.eip20TokenUrl
 import io.horizontalsystems.walletkit.core.imageUrl
@@ -30,7 +33,6 @@ import io.horizontalsystems.marketkit.models.FullCoin
 import io.horizontalsystems.marketkit.models.Token
 import io.horizontalsystems.marketkit.models.TokenType
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.rx2.asFlow
 
 class CoinOverviewViewModel(
     private val service: CoinOverviewService,
@@ -67,7 +69,7 @@ class CoinOverviewViewModel(
 
     init {
         viewModelScope.launch {
-            service.coinOverviewObservable.asFlow().collect { coinOverview ->
+            service.coinOverviewObservable.collect { coinOverview ->
                 isRefreshingLiveData.postValue(false)
 
                 coinOverview.dataOrNull?.let {
@@ -83,7 +85,7 @@ class CoinOverviewViewModel(
         service.start()
 
         viewModelScope.launch {
-            walletManager.activeWalletsUpdatedObservable.asFlow().collect { wallets ->
+            walletManager.activeWalletsUpdatedFlow.collect { wallets ->
                 if (wallets.size > activeWallets.size) {
                     hudMessage = HudMessage(R.string.Hud_Added_To_Wallet, HudMessageType.Success, R.drawable.ic_add_to_wallet_2_24)
                 } else if (wallets.size < activeWallets.size) {
@@ -166,6 +168,41 @@ class CoinOverviewViewModel(
                                 copyValue = id,
                                 imgUrl = token.blockchainType.imageUrl,
                                 explorerUrl = token.blockchain.assetUrl(tokenType.code, tokenType.issuer),
+                                name = token.blockchain.name,
+                                token = token,
+                                canAddToWallet = canAddToWallet,
+                                inWallet = inWallet
+                            )
+                        )
+                    }
+                    is TokenType.XrpAsset -> {
+                        val inWallet =
+                            canAddToWallet && activeWallets.any { it.token == token }
+                        val id = "${tokenType.displayCode}.${tokenType.issuer}"
+
+                        items.add(
+                            TokenVariant(
+                                value = id.shorten(),
+                                copyValue = id,
+                                imgUrl = token.blockchainType.imageUrl,
+                                explorerUrl = token.blockchain.xrpAssetUrl(tokenType),
+                                name = token.blockchain.name,
+                                token = token,
+                                canAddToWallet = canAddToWallet,
+                                inWallet = inWallet
+                            )
+                        )
+                    }
+                    is TokenType.Nep141 -> {
+                        val inWallet =
+                            canAddToWallet && activeWallets.any { it.token == token }
+
+                        items.add(
+                            TokenVariant(
+                                value = tokenType.contractId.shorten(),
+                                copyValue = tokenType.contractId,
+                                imgUrl = token.blockchainType.imageUrl,
+                                explorerUrl = token.blockchain.nep141TokenUrl(tokenType.contractId),
                                 name = token.blockchain.name,
                                 token = token,
                                 canAddToWallet = canAddToWallet,

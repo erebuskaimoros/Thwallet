@@ -7,3 +7,9 @@
 /local.properties
 .externalNativeBuild
 /.claude/settings.local.json
+
+.kotlin/
+gradle/gradle-daemon-jvm.properties
+
+# Working specs, synced to docs-hub instead of git
+/docs/specs/

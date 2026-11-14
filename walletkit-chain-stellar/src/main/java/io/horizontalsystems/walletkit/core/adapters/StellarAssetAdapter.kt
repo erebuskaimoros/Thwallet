@@ -2,16 +2,19 @@ package io.horizontalsystems.walletkit.core.adapters
 
 import io.horizontalsystems.walletkit.core.AdapterState
 import io.horizontalsystems.walletkit.core.BalanceData
+import io.horizontalsystems.walletkit.core.IActivatableTokenAdapter
+import io.horizontalsystems.walletkit.core.TokenActivationError
+import io.horizontalsystems.stellarkit.EnablingAssetError
 import io.horizontalsystems.walletkit.core.managers.StellarKitWrapper
 import io.horizontalsystems.walletkit.core.managers.toAdapterState
 import io.horizontalsystems.stellarkit.StellarKit
 import io.horizontalsystems.stellarkit.room.StellarAsset
-import io.reactivex.BackpressureStrategy
-import io.reactivex.Flowable
-import io.reactivex.subjects.PublishSubject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.math.BigDecimal
@@ -20,40 +23,40 @@ class StellarAssetAdapter(
     stellarKitWrapper: StellarKitWrapper,
     code: String,
     issuer: String
-) : BaseStellarAdapter(stellarKitWrapper) {
+) : BaseStellarAdapter(stellarKitWrapper), IActivatableTokenAdapter {
 
     private val stellarAsset = StellarAsset.Asset(code, issuer)
     private var assetBalance: BigDecimal? = null
 
-    private val balanceUpdatedSubject: PublishSubject<Unit> = PublishSubject.create()
-    private val balanceStateUpdatedSubject: PublishSubject<Unit> = PublishSubject.create()
+    private val _balanceUpdatedFlow = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    private val _balanceStateUpdatedFlow = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 
     private val balance: BigDecimal
         get() = assetBalance ?: BigDecimal.ZERO
 
     override var balanceState: AdapterState = AdapterState.Syncing()
-    override val balanceStateUpdatedFlowable: Flowable<Unit>
-        get() = balanceStateUpdatedSubject.toFlowable(BackpressureStrategy.BUFFER)
+    override val balanceStateUpdatedFlow: Flow<Unit>
+        get() = _balanceStateUpdatedFlow
     override val balanceData: BalanceData
         get() = BalanceData(balance)
-    override val balanceUpdatedFlowable: Flowable<Unit>
-        get() = balanceUpdatedSubject.toFlowable(BackpressureStrategy.BUFFER)
+    override val balanceUpdatedFlow: Flow<Unit>
+        get() = _balanceUpdatedFlow
 
     private val coroutineScope = CoroutineScope(Dispatchers.Default)
 
-    val activationFee = stellarKit.sendFee
+    override val activationFee: BigDecimal get() = stellarKit.sendFee
 
     override fun start() {
         coroutineScope.launch {
             stellarKit.getBalanceFlow(stellarAsset).collect { balance ->
                 assetBalance = balance?.balance
-                balanceUpdatedSubject.onNext(Unit)
+                _balanceUpdatedFlow.tryEmit(Unit)
             }
         }
         coroutineScope.launch {
             stellarKit.syncStateFlow.collect {
                 balanceState = it.toAdapterState()
-                balanceStateUpdatedSubject.onNext(Unit)
+                _balanceStateUpdatedFlow.tryEmit(Unit)
             }
         }
     }
@@ -89,12 +92,20 @@ class StellarAssetAdapter(
         assetBalance != null || stellarKit.isAssetEnabled(stellarAsset)
     }
 
-    fun activate() {
+    // IActivatableTokenAdapter
+
+    override suspend fun isActivated(): Boolean = isTrustlineEstablished()
+
+    override suspend fun activate() = withContext(Dispatchers.IO) {
         stellarKit.enableAsset(stellarAsset.id, null)
     }
 
-    fun validateActivation() {
-        stellarKit.validateEnablingAsset()
+    override fun validateActivation() {
+        try {
+            stellarKit.validateEnablingAsset()
+        } catch (e: EnablingAssetError.InsufficientBalance) {
+            throw TokenActivationError.InsufficientBalance()
+        }
     }
 
 }

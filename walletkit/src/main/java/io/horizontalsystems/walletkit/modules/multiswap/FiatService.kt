@@ -9,11 +9,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.rx2.asFlow
 import java.math.BigDecimal
 import java.math.RoundingMode
+import io.horizontalsystems.walletkit.core.Clearable
+import kotlinx.coroutines.cancel
 
-class FiatService(private val marketKit: MarketKitWrapper) : ServiceState<FiatService.State>() {
+class FiatService(private val marketKit: MarketKitWrapper) : ServiceState<FiatService.State>(), Clearable {
     private var currency: Currency? = null
     private var token: Token? = null
     private var amount: BigDecimal? = null
@@ -65,7 +66,6 @@ class FiatService(private val marketKit: MarketKitWrapper) : ServiceState<FiatSe
         token?.let { platformCoin ->
             coinPriceUpdatesJob = coroutineScope.launch {
                 marketKit.coinPriceObservable("swap", platformCoin.coin.uid, currency.code)
-                    .asFlow()
                     .collect {
                         coinPrice = it
 
@@ -74,6 +74,11 @@ class FiatService(private val marketKit: MarketKitWrapper) : ServiceState<FiatSe
                     }
             }
         }
+    }
+
+    /** Stops the price subscription; the owner calls this when it is done with the service. */
+    override fun clear() {
+        coroutineScope.cancel()
     }
 
     fun setCurrency(currency: Currency) {

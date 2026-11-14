@@ -58,8 +58,11 @@ fun SectionView(viewItems: List<ViewItem>, navigation: HSNavigation, statPage: S
                 is ViewItem.Fee -> DataFieldFee(
                     navigation,
                     item.networkFee.primary.getFormattedPlain() ?: "---",
-                    item.networkFee.secondary?.getFormattedPlain() ?: "---"
+                    item.networkFee.secondary?.getFormattedPlain()
                 )
+                // Alert is only produced in the WalletConnect request flow (rendered by DataBlock);
+                // it does not appear in these EVM section views.
+                is ViewItem.Alert -> {}
             }
         }
         if (viewItems.size == 2) {
@@ -81,9 +84,11 @@ fun SectionView(viewItems: List<ViewItem>, navigation: HSNavigation, statPage: S
 fun AddressCell(
     address: String,
     contact: String?,
+    domain: String? = null,
 ) {
     val image = if (contact != null) R.drawable.user_wrapped_32 else R.drawable.wallet_wrapped_32
-    val description = if (contact != null) address else null
+    val label = contact ?: domain
+    val description = if (label != null) address else null
     CellPrimary(
         left = {
             Image(
@@ -94,7 +99,7 @@ fun AddressCell(
         },
         middle = {
             CellMiddleInfo(
-                eyebrow = (contact ?: address).hs(color = ComposeAppTheme.colors.leah),
+                eyebrow = (label ?: address).hs(color = ComposeAppTheme.colors.leah),
                 subtitle = description?.hs
             )
         },

@@ -6,7 +6,6 @@ import io.horizontalsystems.ethereumkit.models.Address
 import io.horizontalsystems.ethereumkit.models.GasPrice
 import io.horizontalsystems.ethereumkit.models.TransactionData
 import io.horizontalsystems.walletkit.entities.DataState
-import io.reactivex.Single
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -21,7 +20,7 @@ import java.math.BigInteger
 class EvmFeeServiceExplicitGasLimitTest {
 
     @Test
-    fun `explicit gas limit still consults specialized gas-data service`() = runBlocking {
+    fun `explicit gas limit still consults specialized gas-data service`() = runBlocking<Unit> {
         val evmKit = mock(EthereumKit::class.java)
         val gasPrice = GasPrice.Eip1559(100, 2)
         val explicitGasLimit = 250_000L
@@ -40,7 +39,7 @@ class EvmFeeServiceExplicitGasLimitTest {
                 transactionData.value,
                 transactionData.input,
             ),
-        ).thenReturn(Single.just(additionalFee))
+        ).thenReturn(additionalFee)
         val feeService = EvmFeeService(
             evmKit = evmKit,
             gasPriceService = FixedGasPriceService(gasPrice),
@@ -87,5 +86,7 @@ class EvmFeeServiceExplicitGasLimitTest {
         override fun setRecommended() = Unit
 
         override fun start() = Unit
+
+        override fun clear() = Unit
     }
 }

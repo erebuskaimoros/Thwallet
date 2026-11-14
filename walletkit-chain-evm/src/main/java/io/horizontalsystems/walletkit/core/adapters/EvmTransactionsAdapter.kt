@@ -2,6 +2,7 @@ package io.horizontalsystems.walletkit.core.adapters
 
 import io.horizontalsystems.walletkit.core.AdapterState
 import io.horizontalsystems.walletkit.core.managers.ISpamOutgoingContextSource
+import io.horizontalsystems.walletkit.core.nativeTokenContractAddress
 import io.horizontalsystems.walletkit.core.managers.PoisoningScorer
 import io.horizontalsystems.walletkit.core.managers.EvmTransactionEventExtractor
 import io.horizontalsystems.walletkit.core.ICoinManager
@@ -21,11 +22,8 @@ import io.horizontalsystems.ethereumkit.models.TransactionTag
 import io.horizontalsystems.marketkit.models.Token
 import io.horizontalsystems.marketkit.models.TokenQuery
 import io.horizontalsystems.marketkit.models.TokenType
-import io.reactivex.Flowable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.reactive.asFlow
-import kotlinx.coroutines.rx2.await
 
 class EvmTransactionsAdapter(
     val evmKitWrapper: EvmKitWrapper,
@@ -41,7 +39,7 @@ class EvmTransactionsAdapter(
         val userAddress = evmKitWrapper.evmKit.receiveAddress
         return getFullTransactionsBefore(transactionHash, limit)
             .sortedByDescending { it.transaction.timestamp }
-            .mapNotNull { spamContextExtractor.extractOutgoingInfo(it, userAddress) }
+            .mapNotNull { spamContextExtractor.extractCounterpartyInfo(it, userAddress) }
     }
 
 
@@ -66,14 +64,14 @@ class EvmTransactionsAdapter(
     override val lastBlockInfo: LastBlockInfo?
         get() = evmKit.lastBlockHeight?.toInt()?.let { LastBlockInfo(it) }
 
-    override val lastBlockUpdatedFlowable: Flowable<Unit>
-        get() = evmKit.lastBlockHeightFlowable.map { }
+    override val lastBlockUpdatedFlow: Flow<Unit>
+        get() = evmKit.lastBlockHeightFlow.map { }
 
     override val transactionsState: AdapterState
         get() = convertToAdapterState(evmKit.transactionsSyncState)
 
-    override val transactionsStateUpdatedFlowable: Flowable<Unit>
-        get() = evmKit.transactionsSyncStateFlowable.map {}
+    override val transactionsStateUpdatedFlow: Flow<Unit>
+        get() = evmKit.transactionsSyncStateFlow.map { }
 
     override val additionalTokenQueries: List<TokenQuery>
         get() = evmKit.getTagTokenContractAddresses().map { address ->
@@ -92,14 +90,14 @@ class EvmTransactionsAdapter(
                 getFilters(token, transactionType, address?.lowercase()),
                 from?.transactionHash?.hexStringToByteArray(),
                 limit
-            ).await(),
+            ),
             token
         )
     }
 
     override suspend fun getTransactionsAfter(fromTransactionId: String?): List<TransactionRecord> {
         return records(
-            evmKit.getFullTransactionsAfterSingle(fromTransactionId?.hexStringToByteArrayOrNull()).await(),
+            evmKit.getFullTransactionsAfter(fromTransactionId?.hexStringToByteArrayOrNull()),
             null
         )
     }
@@ -112,7 +110,7 @@ class EvmTransactionsAdapter(
             emptyList(),
             fromTransactionHash,
             limit
-        ).await()
+        )
     }
 
     override fun getTransactionRecordsFlow(
@@ -120,8 +118,7 @@ class EvmTransactionsAdapter(
         transactionType: FilterTransactionType,
         address: String?,
     ): Flow<List<TransactionRecord>> {
-        return evmKit.getFullTransactionsFlowable(getFilters(token, transactionType, address))
-            .asFlow()
+        return evmKit.getFullTransactionsFlow(getFilters(token, transactionType, address))
             .map { records(it, token) }
     }
 
@@ -132,13 +129,21 @@ class EvmTransactionsAdapter(
             is EthereumKit.SyncState.Syncing -> AdapterState.Syncing()
         }
 
-    private fun coinTagName(token: Token) = when (val type = token.type) {
-        TokenType.Native -> TransactionTag.EVM_COIN
+    // Tags whose transactions belong to the token's history. The outer filter list is AND-ed,
+    // each inner list is OR-ed (IN), so several names here widen the match for this token only.
+    private fun coinTagNames(token: Token): List<String> = when (val type = token.type) {
+        // A chain whose native coin also has an ERC-20 interface (Arc 0x3600…, ZkSync 0x…800a)
+        // tags transfers through that contract with its address, not EVM_COIN — e.g. a swap
+        // provider paying out via transferFrom on 0x3600… — so match both.
+        TokenType.Native -> listOfNotNull(
+            TransactionTag.EVM_COIN,
+            evmKitWrapper.blockchainType.nativeTokenContractAddress?.lowercase()
+        )
         // EvmKit writes transaction tags with the contract address lowercased (Address.hex),
         // but a user-added custom token can carry a checksummed address — normalize, or the
         // token's history filter never matches (catalog tokens are already lowercase).
-        is TokenType.Eip20 -> type.address.lowercase()
-        else -> ""
+        is TokenType.Eip20 -> listOf(type.address.lowercase())
+        else -> listOf("")
     }
 
     private fun getFilters(
@@ -147,27 +152,27 @@ class EvmTransactionsAdapter(
         address: String?,
     ) = buildList {
         token?.let {
-            add(listOf(coinTagName(it)))
+            add(coinTagNames(it))
         }
 
         val filterType = when (transactionType) {
             FilterTransactionType.All -> null
             FilterTransactionType.Incoming -> when {
-                token != null -> TransactionTag.tokenIncoming(coinTagName(token))
-                else -> TransactionTag.INCOMING
+                token != null -> coinTagNames(token).map { TransactionTag.tokenIncoming(it) }
+                else -> listOf(TransactionTag.INCOMING)
             }
 
             FilterTransactionType.Outgoing -> when {
-                token != null -> TransactionTag.tokenOutgoing(coinTagName(token))
-                else -> TransactionTag.OUTGOING
+                token != null -> coinTagNames(token).map { TransactionTag.tokenOutgoing(it) }
+                else -> listOf(TransactionTag.OUTGOING)
             }
 
-            FilterTransactionType.Swap -> TransactionTag.SWAP
-            FilterTransactionType.Approve -> TransactionTag.EIP20_APPROVE
+            FilterTransactionType.Swap -> listOf(TransactionTag.SWAP)
+            FilterTransactionType.Approve -> listOf(TransactionTag.EIP20_APPROVE)
         }
 
         filterType?.let {
-            add(listOf(it))
+            add(it)
         }
 
         if (!address.isNullOrBlank()) {

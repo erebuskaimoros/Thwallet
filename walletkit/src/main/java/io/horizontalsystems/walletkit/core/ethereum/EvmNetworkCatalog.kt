@@ -10,7 +10,8 @@ import io.horizontalsystems.marketkit.models.TokenType
 
 /**
  * EVM mainnets supported by Thwallet but not represented by first-class BlockchainType values in
- * market-kit.  Keep their UIDs aligned with the market API's blockchain/platform UIDs so synced
+ * market-kit.  Robinhood Chain left this catalog when market-kit gained
+ * BlockchainType.RobinhoodChain under the same `robinhood` UID.  Keep their UIDs aligned with the market API's blockchain/platform UIDs so synced
  * market data can be overlaid rather than copied into a fork of market-kit.
  */
 object EvmNetworkCatalog {
@@ -22,7 +23,6 @@ object EvmNetworkCatalog {
     val mantle: BlockchainType = BlockchainType.Unsupported("mantle")
     val sei: BlockchainType = BlockchainType.Unsupported("sei-network")
     val hyperEvm: BlockchainType = BlockchainType.Unsupported("hyperevm")
-    val robinhood: BlockchainType = BlockchainType.Unsupported("robinhood")
 
     private data class Network(
         val chainId: Int,
@@ -89,15 +89,6 @@ object EvmNetworkCatalog {
                 code = "HYPE",
                 coinGeckoId = "hyperliquid",
             ),
-        ),
-        Network(
-            chainId = 4663,
-            blockchain = Blockchain(
-                robinhood,
-                "Robinhood Chain",
-                "https://robinhoodchain.blockscout.com/address/\$ref",
-            ),
-            nativeCoin = ethereumCoin,
         ),
     )
 
@@ -207,7 +198,7 @@ object EvmNetworkCatalog {
         )
     }
 
-    /** Adds/replaces the six native tokens while retaining market-kit's richer Coin metadata. */
+    /** Adds/replaces the catalog's native tokens while retaining market-kit's richer Coin metadata. */
     internal fun overlayFullCoins(
         marketFullCoins: List<FullCoin>,
         additionalCoinUids: Collection<String> = emptyList(),

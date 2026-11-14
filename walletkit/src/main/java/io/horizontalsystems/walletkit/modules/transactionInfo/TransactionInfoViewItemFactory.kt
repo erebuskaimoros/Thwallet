@@ -1,10 +1,15 @@
 package io.horizontalsystems.walletkit.modules.transactionInfo
 
 import io.horizontalsystems.walletkit.R
+import io.horizontalsystems.walletkit.core.adapters.NearTransactionRecord
+import io.horizontalsystems.walletkit.core.adapters.XrpTransactionRecord
 import io.horizontalsystems.walletkit.core.adapters.StellarTransactionRecord
 import io.horizontalsystems.walletkit.core.adapters.TonTransactionRecord
 import io.horizontalsystems.walletkit.core.managers.TonHelper
 import io.horizontalsystems.walletkit.core.providers.Translator
+import java.text.NumberFormat
+import io.horizontalsystems.walletkit.entities.TransactionValue
+import io.horizontalsystems.walletkit.core.App
 import io.horizontalsystems.walletkit.entities.transactionrecords.bitcoin.BitcoinIncomingTransactionRecord
 import io.horizontalsystems.walletkit.entities.transactionrecords.bitcoin.BitcoinOutgoingTransactionRecord
 import io.horizontalsystems.walletkit.entities.transactionrecords.evm.ApproveTransactionRecord
@@ -119,7 +124,11 @@ class TransactionInfoViewItemFactory(
                                 Value(
                                     Translator.getString(R.string.Transactions_OperationType),
                                     Translator.getString(R.string.Transactions_OperationType_ChangeTrust)
-                                )
+                                ),
+                                Value(
+                                    Translator.getString(R.string.Transactions_TrustLimit),
+                                    trustLimitString(transactionType.value)
+                                ),
                             )
                         )
                     }
@@ -150,6 +159,137 @@ class TransactionInfoViewItemFactory(
                 }
 
                 addMemoItem(transaction.memo, miscItemsSection)
+            }
+
+            is XrpTransactionRecord -> {
+                when (val transactionType = transaction.type) {
+                    is XrpTransactionRecord.Type.Receive -> {
+                        itemSections.add(
+                            TransactionViewItemFactoryHelper.getReceiveSectionItems(
+                                value = transactionType.value,
+                                fromAddress = transactionType.from,
+                                coinPrice = rates[transactionType.value.coinUid],
+                                hideAmount = transactionItem.hideAmount,
+                                blockchainType = blockchainType,
+                            )
+                        )
+                    }
+
+                    is XrpTransactionRecord.Type.Send -> {
+                        sentToSelf = transactionType.sentToSelf
+                        itemSections.add(
+                            TransactionViewItemFactoryHelper.getSendSectionItems(
+                                value = transactionType.value,
+                                toAddress = transactionType.to,
+                                coinPrice = rates[transactionType.value.coinUid],
+                                hideAmount = transactionItem.hideAmount,
+                                sentToSelf = transactionType.sentToSelf,
+                                nftMetadata = nftMetadata,
+                                blockchainType = blockchainType,
+                            )
+                        )
+                    }
+
+                    is XrpTransactionRecord.Type.TrustSet -> {
+                        itemSections.add(
+                            listOf(
+                                Value(
+                                    Translator.getString(R.string.Transactions_OperationType),
+                                    Translator.getString(R.string.Transactions_TrustSet)
+                                ),
+                                Value(
+                                    Translator.getString(R.string.Transactions_TrustLimit),
+                                    trustLimitString(transactionType.value)
+                                ),
+                            )
+                        )
+                    }
+
+                    is XrpTransactionRecord.Type.Unsupported -> {
+                        itemSections.add(
+                            listOf(
+                                Value(
+                                    Translator.getString(R.string.Transactions_OperationType),
+                                    transactionType.type
+                                )
+                            )
+                        )
+                    }
+                }
+
+                transaction.destinationTag?.let { tag ->
+                    miscItemsSection.add(Value(Translator.getString(R.string.Send_DestinationTag), tag.toString()))
+                }
+                addMemoItem(transaction.memo, miscItemsSection)
+            }
+
+            is NearTransactionRecord -> {
+                when (val transactionType = transaction.type) {
+                    is NearTransactionRecord.Type.Receive -> {
+                        itemSections.add(
+                            TransactionViewItemFactoryHelper.getReceiveSectionItems(
+                                value = transactionType.value,
+                                fromAddress = transactionType.from,
+                                coinPrice = rates[transactionType.value.coinUid],
+                                hideAmount = transactionItem.hideAmount,
+                                blockchainType = blockchainType,
+                            )
+                        )
+                        addMemoItem(transactionType.memo, miscItemsSection)
+                    }
+
+                    is NearTransactionRecord.Type.Send -> {
+                        sentToSelf = transactionType.sentToSelf
+                        itemSections.add(
+                            TransactionViewItemFactoryHelper.getSendSectionItems(
+                                value = transactionType.value,
+                                toAddress = transactionType.to,
+                                coinPrice = rates[transactionType.value.coinUid],
+                                hideAmount = transactionItem.hideAmount,
+                                sentToSelf = transactionType.sentToSelf,
+                                nftMetadata = nftMetadata,
+                                blockchainType = blockchainType,
+                            )
+                        )
+                        addMemoItem(transactionType.memo, miscItemsSection)
+                    }
+
+                    is NearTransactionRecord.Type.ContractCall -> {
+                        val items = mutableListOf<TransactionInfoViewItem>(
+                            Value(
+                                Translator.getString(R.string.Transactions_OperationType),
+                                transactionType.method ?: Translator.getString(R.string.Transactions_ContractCall)
+                            ),
+                            Value(Translator.getString(R.string.AddToken_AddressOrSymbol), transactionType.contractId),
+                        )
+                        itemSections.add(items)
+                        for (event in transactionType.outgoing) {
+                            itemSections.add(
+                                TransactionViewItemFactoryHelper.getSendSectionItems(
+                                    value = event.value,
+                                    toAddress = event.address,
+                                    coinPrice = rates[event.value.coinUid],
+                                    hideAmount = transactionItem.hideAmount,
+                                    sentToSelf = false,
+                                    nftMetadata = nftMetadata,
+                                    blockchainType = blockchainType,
+                                )
+                            )
+                        }
+                        for (event in transactionType.incoming) {
+                            itemSections.add(
+                                TransactionViewItemFactoryHelper.getReceiveSectionItems(
+                                    value = event.value,
+                                    fromAddress = event.address,
+                                    coinPrice = rates[event.value.coinUid],
+                                    hideAmount = transactionItem.hideAmount,
+                                    nftMetadata = nftMetadata,
+                                    blockchainType = blockchainType,
+                                )
+                            )
+                        }
+                    }
+                }
             }
 
             is ContractCreationTransactionRecord -> {
@@ -422,7 +562,7 @@ class TransactionInfoViewItemFactory(
                 itemSections.add(
                     listOf(
                         Transaction(
-                            transaction.transaction.contract?.label
+                            transaction.transaction.contractLabel
                                 ?: Translator.getString(R.string.Transactions_ContractCall),
                             "",
                             TransactionViewItem.Icon.Platform(transaction.blockchainType).iconRes
@@ -735,6 +875,18 @@ class TransactionInfoViewItemFactory(
         itemSections.add(TransactionViewItemFactoryHelper.getExplorerSectionItems(transactionItem.explorerData))
 
         return itemSections
+    }
+
+    /**
+     * A trust limit is a cap, not an amount: our default XRPL limit is 10^15, which the coin
+     * formatters would shorten to "1Q", so print it in full with digit grouping.
+     */
+    private fun trustLimitString(limit: TransactionValue): String {
+        val value = limit.decimalValue ?: return ""
+        val number = NumberFormat.getNumberInstance(App.languageManager.currentLocale).apply {
+            maximumFractionDigits = limit.decimals ?: 8
+        }.format(value.stripTrailingZeros())
+        return if (limit.coinCode.isEmpty()) number else "$number ${limit.coinCode}"
     }
 
     private fun addMemoItem(

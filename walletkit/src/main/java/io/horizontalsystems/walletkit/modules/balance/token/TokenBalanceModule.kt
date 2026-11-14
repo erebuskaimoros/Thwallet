@@ -27,7 +27,7 @@ class TokenBalanceModule {
             val balanceService = TokenBalanceService(
                 wallet,
                 BalanceXRateRepository("wallet", App.currencyManager, App.marketKit),
-                BalanceAdapterRepository(App.adapterManager, BalanceCache(App.appDatabase.enabledWalletsCacheDao())),
+                BalanceAdapterRepository(App.adapterManager, BalanceCache(App.appDatabase.enabledWalletsCacheDao()), App.torKitManager),
             )
 
             val tokenTransactionsService = TokenTransactionsService(
@@ -68,7 +68,9 @@ class TokenBalanceModule {
         val alertUnshieldedBalance: BigDecimal?,
         val attentionIcon: AttentionIcon?,
         val showTronNotActiveAlert: Boolean,
+        val showSyncErrorAlert: Boolean,
         val zcashMigrationRequiredAmount: String? = null,
+        val chartButtonEnabled: Boolean,
     )
 
     data class TokenBalanceError(

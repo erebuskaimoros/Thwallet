@@ -13,11 +13,14 @@ class AddressHandlerFactory(
 
     private fun domainHandlers(blockchainType: BlockchainType): List<IAddressHandler> {
         val udnHandler = AddressHandlerUdn(TokenQuery(blockchainType, TokenType.Native), null, udnApiKey)
-        val domainAddressHandlers = mutableListOf<IAddressHandler>(udnHandler)
+        // Chain-specific name services go first: they reject foreign input without a network
+        // call, whereas ENS and UDN attempt a remote lookup for any dotted name.
+        val domainAddressHandlers = mutableListOf<IAddressHandler>()
+        domainAddressHandlers.addAll(ChainRegistry[blockchainType]?.domainAddressHandlers().orEmpty())
+        domainAddressHandlers.add(udnHandler)
         if (blockchainType.isEvm) {
             domainAddressHandlers.add(AddressHandlerEns(blockchainType, EnsResolverHolder.resolver))
         }
-        domainAddressHandlers.addAll(ChainRegistry[blockchainType]?.domainAddressHandlers().orEmpty())
         return domainAddressHandlers
     }
 

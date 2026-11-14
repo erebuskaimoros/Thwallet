@@ -2,15 +2,16 @@ package io.horizontalsystems.walletkit.chain.monero
 
 import android.content.Context
 import androidx.compose.runtime.Composable
-import androidx.lifecycle.viewmodel.compose.viewModel
 import io.horizontalsystems.walletkit.R
 import io.horizontalsystems.walletkit.core.App
+import io.horizontalsystems.walletkit.core.chain.SendChainSettings
+import io.horizontalsystems.walletkit.modules.multiswap.sendtransaction.SendTransactionData
+import java.math.BigDecimal
 import io.horizontalsystems.walletkit.core.IAdapter
 import io.horizontalsystems.walletkit.core.adapters.MoneroAdapter
 import io.horizontalsystems.walletkit.core.adapters.toMoneroSeed
 import io.horizontalsystems.walletkit.core.chain.ChainKeyRow
 import io.horizontalsystems.walletkit.core.chain.ChainPlugin
-import io.horizontalsystems.walletkit.core.chain.ChainSendScreenArgs
 import io.horizontalsystems.walletkit.core.managers.MoneroBirthdayProvider
 import io.horizontalsystems.walletkit.core.managers.MoneroNodeManager
 import io.horizontalsystems.walletkit.core.managers.RestoreSettings
@@ -30,44 +31,76 @@ import io.horizontalsystems.walletkit.modules.nav3.HSNavigation
 import io.horizontalsystems.walletkit.modules.nav3.HSPage
 import io.horizontalsystems.walletkit.modules.receive.monero.ReceiveMoneroScreen
 import io.horizontalsystems.walletkit.modules.send.address.EnterAddressValidator
-import io.horizontalsystems.walletkit.modules.send.monero.SendMoneroModule
-import io.horizontalsystems.walletkit.modules.send.monero.SendMoneroScreen
-import io.horizontalsystems.walletkit.modules.send.monero.SendMoneroViewModel
 import io.horizontalsystems.marketkit.models.BlockchainType
 import io.horizontalsystems.marketkit.models.Token
+import io.horizontalsystems.walletkit.core.chain.SendMemoSupport
+import io.horizontalsystems.walletkit.modules.memo.MemoVisibility
 import io.horizontalsystems.monerokit.MoneroKit
 import io.horizontalsystems.monerokit.MoneroMnemonic
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import timber.log.Timber
 import java.time.LocalDate
 import java.util.Date
 import kotlin.reflect.KClass
+import io.horizontalsystems.walletkit.modules.send.monero.v2.SendMoneroSettingsPage
+import io.horizontalsystems.walletkit.modules.send.monero.v2.MoneroSendSettings
 
 class MoneroChainPlugin(
     private val context: () -> Context,
     private val moneroNodeManager: () -> MoneroNodeManager,
 ) : ChainPlugin {
 
+    override fun sendSettingsPage(wallet: Wallet, address: String?): HSPage = SendMoneroSettingsPage(wallet)
+
+    override fun depositTransactionData(
+        token: Token,
+        data: SendTransactionData,
+        settings: SendChainSettings?,
+    ): SendTransactionData {
+        if (data !is SendTransactionData.Monero) return data
+        return data.copy(selectedOutputs = (settings as? MoneroSendSettings)?.unspentOutputs)
+    }
+
+    override fun sendAvailableBalance(token: Token, settings: SendChainSettings?): BigDecimal? {
+        val outputs = (settings as? MoneroSendSettings)?.unspentOutputs ?: return null
+        return outputs.sumOf { it.amount }
+    }
+
+    override fun sendTransactionData(
+        token: Token,
+        amount: BigDecimal,
+        address: String,
+        memo: String?,
+        extraInput: String?,
+        settings: SendChainSettings?,
+    ) = SendTransactionData.Monero(
+        address = address,
+        amount = amount,
+        memo = memo,
+        selectedOutputs = (settings as? MoneroSendSettings)?.unspentOutputs,
+    )
+
+    override suspend fun sendMemoSupport(token: Token, address: String?) =
+        SendMemoSupport(maxBytes = 120, visibility = MemoVisibility.Offchain)
+
+    private val reselectScope = CoroutineScope(Dispatchers.Default)
+
     override val blockchainType: BlockchainType = BlockchainType.Monero
 
     private val birthdayProvider by lazy { MoneroBirthdayProvider() }
 
-    override fun createAdapter(wallet: Wallet, restoreSettings: RestoreSettings): IAdapter? {
-        val nodeManager = moneroNodeManager()
-        if (nodeManager.isResolvingFastestNode) {
-            // Defer creation until startup Auto-Select picks the fastest node, so the
-            // adapter connects once to it instead of reconnecting. reloadWallets(Monero)
-            // recreates the adapter when resolution finishes.
-            return null
-        }
-        return MoneroAdapter.create(
+    override fun createAdapter(wallet: Wallet, restoreSettings: RestoreSettings): IAdapter =
+        MoneroAdapter.create(
             context = context(),
             wallet = wallet,
             restoreSettings = restoreSettings,
-            node = nodeManager.currentNode,
+            node = moneroNodeManager().currentNode,
         )
-    }
 
     override fun clearAccountData(accountId: String) {
         MoneroAdapter.clear(accountId)
@@ -81,6 +114,44 @@ class MoneroChainPlugin(
             }
         }
         nodeManager.autoSelectFastestNodeOnStartup()
+    }
+
+    override suspend fun onEnterForeground() = reselectFastestIfUnsynced(retryIfNoSwitch = false)
+
+    override suspend fun refreshKit() = reselectFastestIfUnsynced(retryIfNoSwitch = false)
+
+    // The watcher's two-strike gate means the stall is persistent, so when no better node
+    // exists the adapter is rebuilt on the current one — a terminally stopped sync only
+    // recovers with a fresh start. Foreground/refresh skip that: they can fire on a
+    // transient blip where a forced rebuild would churn.
+    override suspend fun onSyncStalled() = reselectFastestIfUnsynced(retryIfNoSwitch = true)
+
+    /**
+     * Switches to the fastest reachable node when the current one has stopped working.
+     *
+     * Gated on an unsynced wallet so a healthy connection is never churned, and on connectivity
+     * so a dead phone network is not mistaken for a dead node.
+     */
+    private fun reselectFastestIfUnsynced(retryIfNoSwitch: Boolean) {
+        if (!App.connectivityManager.isConnected) return
+        if (!hasUnsyncedWallet()) return
+
+        // Launched rather than awaited: the probe can take seconds and both callers are latency
+        // sensitive — refreshKit() is awaited by the balance pull-to-refresh spinner, and the
+        // foreground hook runs plugins one after another. The switch lands asynchronously through
+        // walletReloadTrigger. The manager guards with a mutex, so overlapping calls collapse.
+        reselectScope.launch {
+            try {
+                val switched = moneroNodeManager().reselectFastestNode()
+                if (!switched && retryIfNoSwitch && hasUnsyncedWallet()) {
+                    moneroNodeManager().retryCurrentNode()
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                Timber.e(e, "Monero node reselect failed")
+            }
+        }
     }
 
     override fun addressHandlers(): List<IAddressHandler> = listOf(AddressHandlerMonero())
@@ -129,21 +200,6 @@ class MoneroChainPlugin(
         return SendTransactionServiceMonero(adapter)
     }
 
-    @Composable
-    override fun SendScreen(args: ChainSendScreenArgs) {
-        val factory = SendMoneroModule.Factory(args.wallet, args.address, args.hideAddress)
-        val sendMoneroViewModel = viewModel<SendMoneroViewModel>(factory = factory)
-        SendMoneroScreen(
-            args.title,
-            args.navigation,
-            sendMoneroViewModel,
-            args.amountInputModeViewModel,
-            args.sendEntryPointDestId,
-            args.amount,
-            args.memo,
-            riskyAddress = args.riskyAddress,
-        )
-    }
 
     override val hasReceiveScreen: Boolean get() = true
 

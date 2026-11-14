@@ -2,6 +2,8 @@ package io.horizontalsystems.walletkit.modules.transactionInfo
 
 import io.horizontalsystems.walletkit.R
 import io.horizontalsystems.walletkit.core.App
+import io.horizontalsystems.walletkit.core.adapters.NearTransactionRecord
+import io.horizontalsystems.walletkit.core.adapters.XrpTransactionRecord
 import io.horizontalsystems.walletkit.core.adapters.StellarTransactionRecord
 import io.horizontalsystems.walletkit.core.adapters.TonTransactionRecord
 import io.horizontalsystems.walletkit.core.isCustom
@@ -43,7 +45,7 @@ object TransactionViewItemFactoryHelper {
     private val evmLabelManager = App.evmLabelManager
 
     fun getMemoItem(memo: String) =
-        TransactionInfoViewItem.Value(Translator.getString(R.string.TransactionInfo_Memo), memo)
+        TransactionInfoViewItem.Value(Translator.getString(R.string.TransactionInfo_Memo), memo, copyable = true)
 
     private fun getFeeAmountString(
         rate: CurrencyValue?,
@@ -621,7 +623,10 @@ object TransactionViewItemFactoryHelper {
                 Translator.getString(R.string.TransactionInfo_Date),
                 DateHelper.getFullDate(Date(transaction.timestamp * 1000))
             ),
-            TransactionInfoViewItem.Status(status)
+            TransactionInfoViewItem.Status(
+                status,
+                notProcessed = (transaction as? NearTransactionRecord)?.info?.expired == true,
+            )
         )
 
         when (transaction) {
@@ -669,6 +674,16 @@ object TransactionViewItemFactoryHelper {
             }
 
             is StellarTransactionRecord -> {
+                transaction.fee?.let { fee ->
+                    items.add(getFeeItem(fee, rates[fee.coinUid], status))
+                }
+            }
+
+            is XrpTransactionRecord -> {
+                items.add(getFeeItem(transaction.fee, rates[transaction.fee.coinUid], status))
+            }
+
+            is NearTransactionRecord -> {
                 transaction.fee?.let { fee ->
                     items.add(getFeeItem(fee, rates[fee.coinUid], status))
                 }

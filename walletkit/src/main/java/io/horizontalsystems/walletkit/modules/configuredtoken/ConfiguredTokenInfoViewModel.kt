@@ -6,6 +6,9 @@ import io.horizontalsystems.walletkit.core.App
 import io.horizontalsystems.walletkit.core.IAccountManager
 import io.horizontalsystems.walletkit.core.alternativeImageUrl
 import io.horizontalsystems.walletkit.core.assetUrl
+import io.horizontalsystems.walletkit.core.displayCode
+import io.horizontalsystems.walletkit.core.nep141TokenUrl
+import io.horizontalsystems.walletkit.core.xrpAssetUrl
 import io.horizontalsystems.walletkit.core.eip20TokenUrl
 import io.horizontalsystems.walletkit.core.iconPlaceholder
 import io.horizontalsystems.walletkit.core.imageUrl
@@ -37,6 +40,12 @@ class ConfiguredTokenInfoViewModel(
             }
             is TokenType.Asset -> {
                 ConfiguredTokenInfoType.Contract("${type.code}-${type.issuer}", token.blockchain.type.imageUrl, token.blockchain.assetUrl(type.code, type.issuer))
+            }
+            is TokenType.XrpAsset -> {
+                ConfiguredTokenInfoType.Contract("${type.displayCode}.${type.issuer}", token.blockchain.type.imageUrl, token.blockchain.xrpAssetUrl(type))
+            }
+            is TokenType.Nep141 -> {
+                ConfiguredTokenInfoType.Contract(type.contractId, token.blockchain.type.imageUrl, token.blockchain.nep141TokenUrl(type.contractId))
             }
             is TokenType.Derived -> {
                 ConfiguredTokenInfoType.Bips(token.blockchain.name)

@@ -10,7 +10,6 @@ import io.horizontalsystems.walletkit.core.App
 import io.horizontalsystems.walletkit.core.AppLogger
 import io.horizontalsystems.walletkit.core.ITorManager
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.rx2.await
 
 class SecurityTorSettingsViewModel(
     private val torManager: ITorManager,
@@ -42,13 +41,15 @@ class SecurityTorSettingsViewModel(
             torManager.setTorAsDisabled()
             viewModelScope.launch {
                 try {
-                    torManager.stop().await()
-                    pinComponent.updateLastExitDateBeforeRestart()
-                    App.pinComponent.keepUnlocked()
-                    restartApp = true
+                    torManager.stop()
                 } catch (e: Throwable) {
                     logger.warning("Tor exception", e)
                 }
+                // The preference is already off, so the app restarts into that state even when
+                // stopping Tor fails
+                pinComponent.updateLastExitDateBeforeRestart()
+                App.pinComponent.keepUnlocked()
+                restartApp = true
             }
         }
     }

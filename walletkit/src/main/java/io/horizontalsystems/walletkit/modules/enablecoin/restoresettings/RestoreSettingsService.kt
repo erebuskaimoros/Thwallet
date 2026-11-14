@@ -8,19 +8,31 @@ import io.horizontalsystems.walletkit.core.managers.RestoreSettingsManager
 import io.horizontalsystems.walletkit.core.restoreSettingTypes
 import io.horizontalsystems.walletkit.entities.Account
 import io.horizontalsystems.walletkit.entities.AccountOrigin
+import io.horizontalsystems.walletkit.entities.AccountType
+import io.horizontalsystems.walletkit.modules.nav3.HSPage
 import io.horizontalsystems.marketkit.models.BlockchainType
 import io.horizontalsystems.marketkit.models.Token
-import io.reactivex.subjects.PublishSubject
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 
 class RestoreSettingsService(
     private val restoreSettingsManager: RestoreSettingsManager
 ) : Clearable {
 
-    val approveSettingsObservable = PublishSubject.create<TokenWithSettings>()
-    val rejectApproveSettingsObservable = PublishSubject.create<Token>()
-    val requestObservable = PublishSubject.create<Request>()
+    // Bounded at 64 with newest-wins overflow: these events are user-driven and sparse
+    // (at most a handful per screen session), so the buffer is effectively lossless while
+    // still capping memory if a collector ever stalls.
+    private val _approveSettingsFlow = MutableSharedFlow<TokenWithSettings>(extraBufferCapacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    val approveSettingsFlow: Flow<TokenWithSettings> = _approveSettingsFlow
 
-    fun approveSettings(token: Token, account: Account? = null) {
+    private val _rejectApproveSettingsFlow = MutableSharedFlow<Token>(extraBufferCapacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    val rejectApproveSettingsFlow: Flow<Token> = _rejectApproveSettingsFlow
+
+    private val _requestFlow = MutableSharedFlow<Request>(extraBufferCapacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    val requestFlow: Flow<Request> = _requestFlow
+
+    fun approveSettings(token: Token, account: Account? = null, accountType: AccountType? = account?.type) {
         val blockchainType = token.blockchainType
 
         if (account != null && account.origin == AccountOrigin.Created) {
@@ -30,7 +42,7 @@ class RestoreSettingsService(
                     settings[settingType] = it
                 }
             }
-            approveSettingsObservable.onNext(TokenWithSettings(token, settings))
+            _approveSettingsFlow.tryEmit(TokenWithSettings(token, settings))
             return
         }
 
@@ -39,11 +51,21 @@ class RestoreSettingsService(
         if (blockchainType.restoreSettingTypes.contains(RestoreSettingType.BirthdayHeight)
             && existingSettings.birthdayHeight == null
         ) {
-            requestObservable.onNext(Request(token, RequestType.BirthdayHeight))
+            _requestFlow.tryEmit(Request(token, RequestType.BirthdayHeight))
             return
         }
 
-        approveSettingsObservable.onNext(TokenWithSettings(token, RestoreSettings()))
+        if (blockchainType.restoreSettingTypes.contains(RestoreSettingType.NearAccountId)
+            && existingSettings.nearAccountId == null
+            && accountType != null
+        ) {
+            ChainRegistry[blockchainType]?.accountPickerPage(accountType)?.let { page ->
+                _requestFlow.tryEmit(Request(token, RequestType.AccountPicker, page))
+                return
+            }
+        }
+
+        _approveSettingsFlow.tryEmit(TokenWithSettings(token, RestoreSettings()))
     }
 
     fun save(settings: RestoreSettings, account: Account, blockchainType: BlockchainType, reload: Boolean = true) {
@@ -63,18 +85,22 @@ class RestoreSettingsService(
         }
 
         val tokenWithSettings = TokenWithSettings(token, settings)
-        approveSettingsObservable.onNext(tokenWithSettings)
+        _approveSettingsFlow.tryEmit(tokenWithSettings)
+    }
+
+    fun enter(settings: RestoreSettings, token: Token) {
+        _approveSettingsFlow.tryEmit(TokenWithSettings(token, settings))
     }
 
     fun cancel(token: Token) {
-        rejectApproveSettingsObservable.onNext(token)
+        _rejectApproveSettingsFlow.tryEmit(token)
     }
 
     override fun clear() = Unit
 
     data class TokenWithSettings(val token: Token, val settings: RestoreSettings)
-    data class Request(val token: Token, val requestType: RequestType)
+    data class Request(val token: Token, val requestType: RequestType, val page: HSPage? = null)
     enum class RequestType {
-        BirthdayHeight
+        BirthdayHeight, AccountPicker
     }
 }

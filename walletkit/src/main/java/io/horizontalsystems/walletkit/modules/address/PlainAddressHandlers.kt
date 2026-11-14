@@ -9,11 +9,4 @@ import io.horizontalsystems.walletkit.core.isEvm
  * both [AddressHandlerFactory] and [AddressInputModule].
  */
 fun plainAddressHandlers(blockchainType: BlockchainType): List<IAddressHandler> =
-    if (blockchainType.isEvm) {
-        listOf(AddressHandlerEvm(blockchainType))
-    } else when (blockchainType) {
-
-        BlockchainType.Tron -> listOf(AddressHandlerTron())
-
-        else -> ChainRegistry[blockchainType]?.addressHandlers().orEmpty()
-    }
+    ChainRegistry[blockchainType]?.addressHandlers().orEmpty()

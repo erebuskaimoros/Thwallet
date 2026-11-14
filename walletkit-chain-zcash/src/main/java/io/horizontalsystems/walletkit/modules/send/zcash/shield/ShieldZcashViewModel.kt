@@ -30,12 +30,20 @@ class ShieldZcashViewModel(
 
     val blockchainType = wallet.token.blockchainType
     val coinMaxAllowedDecimals = wallet.token.decimals
+    val shieldedAddress = adapter.receiveAddress
 
     var coinRate by mutableStateOf(xRateService.getRate(wallet.coin.uid))
         private set
 
     var sendResult by mutableStateOf<SendResult?>(null)
         private set
+
+    /** The failure has been shown; a later recomposition must not show it again. */
+    fun onFailureShown() {
+        if (sendResult is SendResult.Failed) {
+            sendResult = null
+        }
+    }
 
     var fee by mutableStateOf<BigDecimal?>(null)
         private set
@@ -52,8 +60,15 @@ class ShieldZcashViewModel(
         }
     }
 
-    fun getConfirmationData(): SendConfirmationData {
-        val unshielded = adapter.balanceData?.unshielded ?: throw IllegalStateException()
+    /**
+     * Confirmation data for the current input, or null when it isn't available.
+     *
+     * The pieces are filled in asynchronously and none of them survive process death, so a
+     * confirmation screen restored from the saved back stack sees empty state. Reporting that as
+     * null lets the caller send the user back to the form instead of crashing on composition.
+     */
+    fun getConfirmationData(): SendConfirmationData? {
+        val unshielded = adapter.balanceData?.unshielded ?: return null
 
         return SendConfirmationData(
             amount = unshielded,

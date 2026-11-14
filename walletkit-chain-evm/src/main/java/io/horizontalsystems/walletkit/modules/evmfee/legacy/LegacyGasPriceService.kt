@@ -11,8 +11,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.rx2.await
 import java.math.BigDecimal
+import kotlinx.coroutines.cancel
 
 class LegacyGasPriceService(
     private val gasPriceProvider: LegacyGasPriceProvider,
@@ -30,6 +30,10 @@ class LegacyGasPriceService(
 
     override fun createState() = state
 
+    override fun clear() {
+        coroutineScope.cancel()
+    }
+
     override fun start() {
         if (initialGasPrice != null) {
             setGasPrice(initialGasPrice)
@@ -43,7 +47,7 @@ class LegacyGasPriceService(
             return it
         }
 
-        val gasPrice = gasPriceProvider.gasPriceSingle().await()
+        val gasPrice = gasPriceProvider.gasPrice()
         val adjustedGasPrice = gasPrice.coerceAtLeast(minRecommendedGasPrice ?: 0)
 
         recommendedGasPrice = adjustedGasPrice

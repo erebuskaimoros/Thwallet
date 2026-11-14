@@ -1,44 +1,54 @@
 package io.horizontalsystems.walletkit.modules.balance
 
+import android.os.SystemClock
 import io.horizontalsystems.walletkit.core.AdapterState
 import io.horizontalsystems.walletkit.core.BalanceData
 import io.horizontalsystems.walletkit.core.Clearable
 import io.horizontalsystems.walletkit.core.IAdapterManager
-import io.horizontalsystems.walletkit.core.adapters.BaseTronAdapter
+import io.horizontalsystems.walletkit.core.ITorManager
+import io.horizontalsystems.walletkit.core.managers.TorManager
+import io.horizontalsystems.walletkit.core.chain.ChainRegistry
+import io.horizontalsystems.walletkit.core.collectSafely
 import io.horizontalsystems.walletkit.entities.Wallet
 import io.horizontalsystems.walletkit.modules.balance.BalanceModule.BalanceWarning
-import io.horizontalsystems.marketkit.models.BlockchainType
-import io.reactivex.Observable
-import io.reactivex.subjects.PublishSubject
+import io.horizontalsystems.walletkit.modules.settings.privacy.tor.TorStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.reactive.asFlow
 import java.math.BigDecimal
 
 class BalanceAdapterRepository(
     private val adapterManager: IAdapterManager,
-    private val balanceCache: BalanceCache
+    private val balanceCache: BalanceCache,
+    private val torManager: ITorManager,
 ) : Clearable {
     private var wallets = listOf<Wallet>()
+    @Volatile
+    private var torConnectedAt = 0L
 
     private val coroutineScope = CoroutineScope(Dispatchers.Default)
     private val balanceStateUpdatedJobs = mutableListOf<Job>()
     private val balanceUpdatedJobs = mutableListOf<Job>()
 
-    private val readySubject = PublishSubject.create<Unit>()
-    val readyObservable: Observable<Unit> get() = readySubject
+    private val _readyFlow = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    val readyFlow: Flow<Unit> get() = _readyFlow
 
-    private val updatesSubject = PublishSubject.create<Wallet>()
-    val updatesObservable: Observable<Wallet> get() = updatesSubject
+    // Unbounded, matching the Rx BUFFER strategy this replaced: each event names a
+    // wallet whose row must re-read its data, so no event may be dropped.
+    private val _updatesFlow = MutableSharedFlow<Wallet>(extraBufferCapacity = Int.MAX_VALUE)
+    val updatesFlow: Flow<Wallet> get() = _updatesFlow
 
     init {
         coroutineScope.launch {
-            adapterManager.adaptersReadyObservable.asFlow().collect {
+            adapterManager.adaptersReadyFlow.collectSafely {
                 unsubscribeFromAdapterUpdates()
-                readySubject.onNext(Unit)
+                _readyFlow.tryEmit(Unit)
 
                 balanceCache.setCache(
                     wallets.mapNotNull { wallet ->
@@ -49,6 +59,18 @@ class BalanceAdapterRepository(
                 )
 
                 subscribeForAdapterUpdates()
+            }
+        }
+        coroutineScope.launch {
+            torManager.torStatusFlow.collectSafely { status ->
+                if (status == TorStatus.Connected) {
+                    torConnectedAt = SystemClock.elapsedRealtime()
+                }
+                wallets.forEach { _updatesFlow.tryEmit(it) }
+                if (status == TorStatus.Connected) {
+                    delay(TOR_ERROR_GRACE_MILLIS)
+                    wallets.forEach { _updatesFlow.tryEmit(it) }
+                }
             }
         }
     }
@@ -78,14 +100,14 @@ class BalanceAdapterRepository(
         wallets.forEach { wallet ->
             adapterManager.getBalanceAdapterForWallet(wallet)?.let { adapter ->
                 balanceStateUpdatedJobs += coroutineScope.launch {
-                    adapter.balanceStateUpdatedFlowable.asFlow().collect {
-                        updatesSubject.onNext(wallet)
+                    adapter.balanceStateUpdatedFlow.collectSafely {
+                        _updatesFlow.tryEmit(wallet)
                     }
                 }
 
                 balanceUpdatedJobs += coroutineScope.launch {
-                    adapter.balanceUpdatedFlowable.asFlow().collect {
-                        updatesSubject.onNext(wallet)
+                    adapter.balanceUpdatedFlow.collectSafely {
+                        _updatesFlow.tryEmit(wallet)
 
                         adapterManager.getBalanceAdapterForWallet(wallet)?.balanceData?.let {
                             balanceCache.setCache(wallet, it)
@@ -97,8 +119,21 @@ class BalanceAdapterRepository(
     }
 
     fun state(wallet: Wallet): AdapterState {
-        return adapterManager.getBalanceAdapterForWallet(wallet)?.balanceState
+        val state = adapterManager.getBalanceAdapterForWallet(wallet)?.balanceState
             ?: AdapterState.Syncing()
+
+        // Nothing reaches the network while Tor starts or reconnects, so errors from kits that
+        // tried meanwhile are not real. The kits are refreshed once Tor connects and those still
+        // failing once more after TorManager.WARM_UP_MILLIS, so errors stay hidden until then.
+        if (state is AdapterState.NotSynced && torManager.isTorEnabled) {
+            val torStatus = torManager.torStatusFlow.value
+            val justConnected = torStatus == TorStatus.Connected &&
+                SystemClock.elapsedRealtime() - torConnectedAt < TOR_ERROR_GRACE_MILLIS
+            if (torStatus == TorStatus.Connecting || justConnected) {
+                return AdapterState.Connecting
+            }
+        }
+        return state
     }
 
     fun balanceData(wallet: Wallet): BalanceData {
@@ -109,12 +144,7 @@ class BalanceAdapterRepository(
 
     suspend fun warning(wallet: Wallet): BalanceWarning? {
         try {
-            if (wallet.token.blockchainType is BlockchainType.Tron) {
-                adapterManager.getAdapterForWallet<BaseTronAdapter>(wallet)?.let { adapter ->
-                    if (!adapter.tronKit.accountActive)
-                        return BalanceWarning.TronInactiveAccountWarning
-                }
-            }
+            return ChainRegistry[wallet.token.blockchainType]?.balanceWarning(wallet)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -122,7 +152,14 @@ class BalanceAdapterRepository(
     }
 
     suspend fun refresh() {
+        // A refresh on the circuit that just failed would fail the same way on a refusing exit
+        if (torManager.isTorEnabled) {
+            torManager.newCircuits()
+        }
         adapterManager.refresh()
     }
 
+    companion object {
+        private const val TOR_ERROR_GRACE_MILLIS = TorManager.WARM_UP_MILLIS + 10_000L
+    }
 }

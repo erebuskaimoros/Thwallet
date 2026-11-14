@@ -41,20 +41,14 @@ import io.horizontalsystems.marketkit.models.BlockchainType
 import io.horizontalsystems.marketkit.models.HsTimePeriod
 import io.horizontalsystems.marketkit.models.Token
 import io.horizontalsystems.marketkit.models.TokenQuery
-import io.horizontalsystems.tronkit.models.Contract
-import io.horizontalsystems.tronkit.network.CreatedTransaction
-import io.horizontalsystems.tronkit.transaction.Fee
-import io.reactivex.Flowable
-import io.reactivex.Single
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.math.BigDecimal
 import java.util.Date
-import io.horizontalsystems.tronkit.models.Address as TronAddress
 
 interface IAdapterManager {
-    val adaptersReadyObservable: Flowable<Map<Wallet, IAdapter>>
+    val adaptersReadyFlow: Flow<Map<Wallet, IAdapter>>
     fun startAdapterManager()
     suspend fun refresh()
     fun <T> getAdapterForWallet(wallet: Wallet): T?
@@ -72,6 +66,10 @@ interface ILocalStorage {
     var swapRecentTokenQueryIds: List<String>
     var uSwapSuspensions: String?
     var uSwapSuspensionsSyncTime: Long
+    var uSwapExecutionTypes: String?
+    var uSwapRouteScores: String?
+    var privateSendProviderIds: String?
+    var privateSendProviderIdsSyncTime: Long
     var zcashAccountIds: Set<String>
     var zcashMigrationTransactionIds: Set<String>
     var autoLockInterval: AutoLockInterval
@@ -127,6 +125,8 @@ interface ILocalStorage {
     val marketsTabEnabledFlow: StateFlow<Boolean>
     var balanceTabButtonsEnabled: Boolean
     val balanceTabButtonsEnabledFlow: StateFlow<Boolean>
+    var chartButtonEnabled: Boolean
+    val chartButtonEnabledFlow: StateFlow<Boolean>
     var amountRoundingEnabled: Boolean
     val amountRoundingEnabledFlow: StateFlow<Boolean>
     var personalSupportEnabled: Boolean
@@ -170,8 +170,8 @@ interface IAccountManager {
     val activeAccountStateFlow: Flow<ActiveAccountState>
     val isAccountsEmpty: Boolean
     val accounts: List<Account>
-    val accountsFlowable: Flowable<List<Account>>
-    val accountsDeletedFlowable: Flowable<Unit>
+    val accountsFlow: Flow<List<Account>>
+    val accountsDeletedFlow: Flow<Unit>
 
     fun setActiveAccountId(activeAccountId: String?)
     fun account(id: String): Account?
@@ -189,7 +189,7 @@ interface IAccountManager {
 
 interface IBackupManager {
     val allBackedUp: Boolean
-    val allBackedUpFlowable: Flowable<Boolean>
+    val allBackedUpFlow: Flow<Boolean>
 }
 
 interface IAccountFactory {
@@ -220,13 +220,6 @@ interface IRandomProvider {
 interface INetworkManager {
     suspend fun getMarkdown(host: String, path: String): String
     suspend fun getReleaseNotes(host: String, path: String): JsonObject
-    fun getTransactionWithPost(
-        host: String,
-        path: String,
-        body: Map<String, Any>
-    ): Flowable<JsonObject>
-
-    fun getEvmInfo(host: String, path: String): Single<JsonObject>
     suspend fun registerApp(userId: String, referralCode: String): RegisterAppResponse
     suspend fun getWCWhiteList(host: String, path: String): List<ServiceWCWhitelist.WCWhiteList>
 }
@@ -281,10 +274,10 @@ sealed class AdapterState {
 interface ITransactionsAdapter {
     val explorerTitle: String
     val transactionsState: AdapterState
-    val transactionsStateUpdatedFlowable: Flowable<Unit>
+    val transactionsStateUpdatedFlow: Flow<Unit>
 
     val lastBlockInfo: LastBlockInfo?
-    val lastBlockUpdatedFlowable: Flowable<Unit>
+    val lastBlockUpdatedFlow: Flow<Unit>
     val additionalTokenQueries: List<TokenQuery> get() = listOf()
 
     suspend fun getTransactions(
@@ -298,11 +291,6 @@ interface ITransactionsAdapter {
     suspend fun getTransactionsAfter(
         fromTransactionId: String?
     ): List<TransactionRecord> = emptyList()
-
-    suspend fun getTronFullTransactionsBefore(
-        fromTransactionHash: ByteArray?,
-        limit: Int
-    ): List<io.horizontalsystems.tronkit.models.FullTransaction> = emptyList()
 
     fun getRawTransaction(transactionHash: String): String? = null
 
@@ -319,13 +307,17 @@ class UnsupportedFilterException : Exception()
 
 interface IBalanceAdapter {
     val balanceState: AdapterState
-    val balanceStateUpdatedFlowable: Flowable<Unit>
+    val balanceStateUpdatedFlow: Flow<Unit>
 
     val balanceData: BalanceData?
-    val balanceUpdatedFlowable: Flowable<Unit>
+    val balanceUpdatedFlow: Flow<Unit>
 }
 
-data class StellarAssetBalance(val code: String)
+/** One line of the locked-balance breakdown, e.g. "Wallet activation" / "1 XRP". */
+data class ReserveItem(val title: String, val value: String)
+
+/** Chain-specific explanation of a reserve-style minimum balance (Stellar, XRP Ledger). */
+data class ReserveInfo(val items: List<ReserveItem>, val description: String)
 
 data class BalanceData(
     val available: BigDecimal,
@@ -333,20 +325,27 @@ data class BalanceData(
     val notRelayed: BigDecimal = BigDecimal.ZERO,
     val pending: BigDecimal = BigDecimal.ZERO,
     val minimumBalance: BigDecimal = BigDecimal.ZERO,
-    val stellarAssets: List<StellarAssetBalance> = listOf(),
+    val reserve: ReserveInfo? = null,
     val unshielded: BigDecimal = BigDecimal.ZERO
 ) {
     val total: BigDecimal
         get() = available + timeLocked + notRelayed + pending + minimumBalance + unshielded
 
     fun serialize(gson: Gson): String {
-        // no need to cache stellarAssets in cache, so we exclude it
-        return gson.toJson(this.copy(stellarAssets = listOf()))
+        // the reserve breakdown is presentation state rebuilt by the adapter; not cached
+        return gson.toJson(this.copy(reserve = null))
     }
 
     companion object {
+        @Suppress("SENSELESS_COMPARISON")
         fun deserialize(v: String, gson: Gson): BalanceData? {
-            return gson.fromJson(v, BalanceData::class.java)
+            // Gson bypasses Kotlin null-safety: a row whose keys don't match the field names
+            // (written by a minified 0.52 build before BalanceData was kept) has every field
+            // null. Drop it; the adapter rewrites the cache on its next balance update.
+            return gson.fromJson(v, BalanceData::class.java)?.takeIf {
+                it.available != null && it.timeLocked != null && it.notRelayed != null &&
+                    it.pending != null && it.minimumBalance != null && it.unshielded != null
+            }
         }
     }
 }
@@ -409,6 +408,43 @@ interface ISendStellarAdapter {
     suspend fun send(transactionEnvelope: String)
 }
 
+interface ISendXrpAdapter {
+    val maxSendableBalance: BigDecimal
+    val fee: BigDecimal
+    /** False until the account has received its first payment of at least the base reserve. */
+    val isAccountActivated: Boolean
+    fun validate(address: String)
+    /** Base reserve when [address] does not exist yet (the first payment must create it), else null. */
+    suspend fun getMinimumSendAmount(address: String): BigDecimal?
+    /** True when [address] has the RequireDestTag flag: an untagged payment would be rejected. */
+    suspend fun requiresDestinationTag(address: String): Boolean
+    suspend fun send(amount: BigDecimal, address: String, destinationTag: Long?, memo: String?): String
+}
+
+interface ISendNearAdapter {
+    /** What a send can move before the address is known, with the fee of the costliest receiver held back. */
+    val maxSendableBalance: BigDecimal
+    /** Last estimated network fee, for display before the address is known. */
+    val fee: BigDecimal
+    /** Transactions sent from this account that are not final yet. */
+    val pendingTransactionHashes: Set<String>
+    fun validate(address: String)
+    suspend fun estimate(address: String, amount: BigDecimal, memo: String?): NearSendEstimate
+    /** [estimate] is the one the user confirmed; a token send fails if its storage deposit has changed since. */
+    suspend fun send(amount: BigDecimal, address: String, memo: String?, estimate: NearSendEstimate): String
+}
+
+/**
+ * [fee] is what the send costs in NEAR; [storageDeposit] is NEAR paid to register the receiver
+ * with a token contract. [requiredNear] is the NEAR balance the account must hold for the network
+ * to accept it: gas is bought up front at a higher price than it is charged, then refunded.
+ */
+open class NearSendEstimate(
+    val fee: BigDecimal,
+    val storageDeposit: BigDecimal?,
+    val requiredNear: BigDecimal,
+)
+
 interface ISendThorchainAdapter {
     val availableBalance: BigDecimal
     val runeAvailableBalance: BigDecimal
@@ -457,20 +493,6 @@ interface ISendZanoAdapter {
     suspend fun estimateFee(amount: BigDecimal, address: String, memo: String?) : BigDecimal
 }
 
-interface ISendTronAdapter {
-    val balanceData: BalanceData
-    val trxBalanceData: BalanceData
-
-    suspend fun estimateFee(amount: BigDecimal, to: TronAddress): List<Fee>
-    suspend fun estimateFee(transaction: CreatedTransaction): List<Fee>
-    suspend fun estimateFee(contract: Contract): List<Fee>
-    suspend fun send(amount: BigDecimal, to: TronAddress, feeLimit: Long?): String
-    suspend fun send(contract: Contract, feeLimit: Long?): String
-    suspend fun send(createdTransaction: CreatedTransaction): String
-    suspend fun isAddressActive(address: TronAddress): Boolean
-    fun isOwnAddress(address: TronAddress): Boolean
-}
-
 interface IAccountsStorage {
     val isAccountsEmpty: Boolean
 
@@ -480,7 +502,6 @@ interface IAccountsStorage {
     fun save(account: Account)
     fun update(account: Account)
     fun delete(id: String)
-    fun getNonBackedUpCount(): Flowable<Int>
     fun clear()
     fun getDeletedAccountIds(): List<String>
     fun clearDeleted()
@@ -546,11 +567,15 @@ interface IAccountCleaner {
 
 interface ITorManager {
     fun start()
-    fun stop(): Single<Boolean>
+    suspend fun stop(): Boolean
     fun setTorAsEnabled()
     fun setTorAsDisabled()
     val isTorEnabled: Boolean
     val torStatusFlow: StateFlow<TorStatus>
+    // Bootstrap percentage while Tor starts; null once it is up, or while it only reconnects
+    val bootstrapProgressFlow: StateFlow<Int?>
+    // New requests get new circuits, so a request failing on its exit can leave through another
+    suspend fun newCircuits()
 }
 
 interface IRateAppManager {

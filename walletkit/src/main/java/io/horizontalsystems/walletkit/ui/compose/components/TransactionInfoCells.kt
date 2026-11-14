@@ -203,13 +203,33 @@ fun TransactionAmountCell(
 fun TitleAndValueCell(
     title: String,
     value: String,
+    copyable: Boolean = false,
 ) {
+    val view = LocalView.current
     RowUniversal(
         modifier = Modifier.padding(horizontal = 16.dp),
     ) {
         subhead2_grey(text = title, modifier = Modifier.padding(end = 16.dp))
-        Spacer(Modifier.weight(1f))
-        subhead1_leah(text = value, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (!copyable) {
+            Spacer(Modifier.weight(1f))
+        }
+        subhead1_leah(
+            text = value,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.End,
+            modifier = if (copyable) Modifier.weight(1f) else Modifier,
+        )
+        if (copyable) {
+            HSpacer(16.dp)
+            ButtonSecondaryCircle(
+                icon = R.drawable.ic_copy_20,
+                onClick = {
+                    TextHelper.copyText(value)
+                    HudHelper.showSuccessMessage(view, R.string.Hud_Text_Copied)
+                }
+            )
+        }
     }
 }
 
@@ -342,7 +362,8 @@ fun TransactionInfoContactCell(name: String) {
 @Composable
 fun TransactionInfoStatusCell(
     status: TransactionStatus,
-    navigation: HSNavigation
+    navigation: HSNavigation,
+    notProcessed: Boolean = false,
 ) {
     RowUniversal(
         modifier = Modifier.padding(horizontal = 16.dp),
@@ -373,7 +394,7 @@ fun TransactionInfoStatusCell(
                 .defaultMinSize(minWidth = 8.dp)
         )
         subhead1_leah(
-            text = stringResource(statusTitle(status)),
+            text = stringResource(if (notProcessed) R.string.Transactions_NotProcessed else statusTitle(status)),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(end = 8.dp)
@@ -392,7 +413,7 @@ fun TransactionInfoStatusCell(
                 Icon(
                     painter = painterResource(id = R.drawable.ic_attention_20),
                     contentDescription = null,
-                    tint = ComposeAppTheme.colors.lucian
+                    tint = if (notProcessed) ComposeAppTheme.colors.grey else ComposeAppTheme.colors.lucian
                 )
             }
 
@@ -531,9 +552,11 @@ fun TransactionInfoExplorerCell(
         body_leah(
             text = title,
             maxLines = 1,
-            modifier = Modifier.padding(horizontal = 16.dp)
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .weight(1f)
+                .padding(horizontal = 16.dp)
         )
-        Spacer(Modifier.weight(1f))
         Image(
             modifier = Modifier.size(20.dp),
             painter = painterResource(id = R.drawable.ic_arrow_right),

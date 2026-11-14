@@ -11,8 +11,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,6 +29,7 @@ import io.horizontalsystems.walletkit.core.stats.StatPage
 import io.horizontalsystems.walletkit.helpers.HudHelper
 import io.horizontalsystems.walletkit.modules.confirm.ConfirmTransactionScreen
 import io.horizontalsystems.walletkit.modules.evmfee.FeeSettingsInfoSheet
+import io.horizontalsystems.walletkit.modules.nav3.BottomSheetDismissHandler
 import io.horizontalsystems.walletkit.modules.nav3.HSNavigation
 import io.horizontalsystems.walletkit.modules.sendevmtransaction.SendEvmTransactionView
 import io.horizontalsystems.walletkit.modules.walletconnect.WCDelegate
@@ -40,8 +39,6 @@ import io.horizontalsystems.walletkit.modules.walletconnect.request.sendtransact
 import io.horizontalsystems.walletkit.modules.walletconnect.request.sendtransaction.WalletConnectTransaction
 import io.horizontalsystems.walletkit.modules.walletconnect.session.TitleValueCell
 import io.horizontalsystems.walletkit.ui.compose.ComposeAppTheme
-import io.horizontalsystems.walletkit.ui.compose.components.ButtonPrimaryDefault
-import io.horizontalsystems.walletkit.ui.compose.components.ButtonPrimaryYellow
 import io.horizontalsystems.walletkit.ui.compose.components.VSpacer
 import io.horizontalsystems.walletkit.ui.compose.components.rememberAsyncAction
 import io.horizontalsystems.walletkit.ui.compose.components.headline1_leah
@@ -49,7 +46,7 @@ import io.horizontalsystems.walletkit.ui.compose.components.subhead_grey
 import io.horizontalsystems.walletkit.modules.walletconnect.VerificationAlert
 import io.horizontalsystems.walletkit.ui.helpers.TextHelper
 import io.horizontalsystems.walletkit.uiv3.components.bottombars.ButtonsGroupHorizontal
-import io.horizontalsystems.walletkit.uiv3.components.bottomsheet.BottomSheetContent
+import io.horizontalsystems.walletkit.uiv3.components.bottomsheet.BottomSheetBody
 import io.horizontalsystems.walletkit.uiv3.components.controls.ButtonSize
 import io.horizontalsystems.walletkit.uiv3.components.controls.ButtonVariant
 import io.horizontalsystems.walletkit.uiv3.components.controls.HSButton
@@ -57,7 +54,6 @@ import io.horizontalsystems.walletkit.uiv3.components.info.TextBlock
 import io.horizontalsystems.marketkit.models.BlockchainType
 import kotlinx.coroutines.delay
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WCSignEthereumTransactionRequestScreen(
     navigation: HSNavigation,
@@ -77,7 +73,6 @@ fun WCSignEthereumTransactionRequestScreen(
     )
     val uiState = viewModel.uiState
     val view = LocalView.current
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     // Shared by the sheet's Approve and the confirmation screen's Sign button: both respond to
     // the same request, so a click on either must lock out both.
     val signAction = rememberAsyncAction()
@@ -86,17 +81,15 @@ fun WCSignEthereumTransactionRequestScreen(
     val feeInfoText = stringResource(id = R.string.FeeSettings_NetworkFee_Info)
     val doneMessage = stringResource(R.string.Hud_Text_Done)
 
-    BottomSheetContent(
-        onDismissRequest = {
-            // A confirmed sign is already responding (NonCancellable); discarding or rejecting
-            // now would race the pending response, so ignore dismissal until it completes.
-            if (!signAction.inProgress) {
-                WCDelegate.discardActiveSessionRequest(sessionRequestUI.requestId)
-                navigation.removeLastOrNull()
-            }
-        },
-        sheetState = sheetState,
-    ) { snackbarActions ->
+    BottomSheetDismissHandler {
+        // A confirmed sign is already responding (NonCancellable); discarding or rejecting
+        // now would race the pending response, so ignore dismissal until it completes.
+        if (!signAction.inProgress) {
+            WCDelegate.discardActiveSessionRequest(sessionRequestUI.requestId)
+            navigation.removeLastOrNull()
+        }
+    }
+    BottomSheetBody { snackbarActions ->
         Column(
             modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -127,7 +120,10 @@ fun WCSignEthereumTransactionRequestScreen(
             }
             VSpacer(16.dp)
             headline1_leah(
-                text = stringResource(R.string.WalletConnect_TokenAllowance),
+                // eth_signTransaction carries whatever the dApp put in it, so the screen can't
+                // claim it is an allowance. It names the request instead and leaves the contents
+                // to the decoded rows below.
+                text = stringResource(R.string.WalletConnect_SignTransactionRequest_Title),
                 textAlign = TextAlign.Center,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -147,7 +143,12 @@ fun WCSignEthereumTransactionRequestScreen(
             VerificationAlert(sessionRequestUI.verification, reportUnverified = false)
 
             TextBlock(
-                text = stringResource(R.string.WalletConnect_DappWillBeAbleToMoveToken, sessionRequestUI.peerUI.peerName),
+                // The signature goes back to the dApp rather than to the network: nothing is
+                // broadcast here, and the dApp decides when — or whether — it ever is.
+                text = stringResource(
+                    R.string.WalletConnect_SignTransactionRequest_Description,
+                    sessionRequestUI.peerUI.peerName
+                ),
             )
             VSpacer(16.dp)
             Column(
@@ -204,7 +205,7 @@ fun WCSignEthereumTransactionRequestScreen(
                     }
                 )
                 HSButton(
-                    title = stringResource(R.string.Button_Approve),
+                    title = stringResource(R.string.Button_Sign),
                     variant = ButtonVariant.Primary,
                     modifier = Modifier.weight(1f),
                     enabled = !signAction.inProgress,
@@ -231,11 +232,11 @@ fun WCSignEthereumTransactionRequestScreen(
     }
 
     ConfirmTransactionScreen(
-        title = stringResource(id = R.string.WalletConnect_SignMessageRequest_Title),
+        title = stringResource(id = R.string.WalletConnect_SignTransactionRequest_Title),
         onClickBack = navigation::removeLastOrNull,
         onClickFeeSettings = null,
         buttonsSlot = {
-            ButtonPrimaryYellow(
+            HSButton(
                 modifier = Modifier.fillMaxWidth(),
                 title = stringResource(R.string.Button_Sign),
                 enabled = !signAction.inProgress,
@@ -258,7 +259,8 @@ fun WCSignEthereumTransactionRequestScreen(
                 }
             )
             VSpacer(16.dp)
-            ButtonPrimaryDefault(
+            HSButton(
+                variant = ButtonVariant.Secondary,
                 modifier = Modifier.fillMaxWidth(),
                 title = stringResource(R.string.Button_Reject),
                 onClick = {

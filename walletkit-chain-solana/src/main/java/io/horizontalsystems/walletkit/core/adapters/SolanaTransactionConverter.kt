@@ -30,15 +30,69 @@ class SolanaTransactionConverter(
 ) {
     private val userAddress = solanaKitWrapper.solanaKit.receiveAddress
 
-    // The display label of the first recognized swap program this transaction invoked, or null.
-    private fun swapExchangeName(transaction: Transaction): String? =
-        transaction.programIds?.split(" ")?.firstNotNullOfOrNull { swapProgramLabels[it] }
+    // The display label of the recognized swap program this transaction invoked, or null. When
+    // several are present the label is chosen by `swapProgramLabels` order (the user-facing
+    // aggregator first), not instruction order: a 1inch Fusion fill routes through Jupiter, and
+    // Jupiter's instruction comes before the Fusion one, but the user swapped on 1inch.
+    private fun swapExchangeName(transaction: Transaction): String? {
+        val invoked = transaction.programIds?.split(" ")?.toSet() ?: return null
+        return swapProgramLabels.entries.firstOrNull { it.key in invoked }?.value
+    }
 
     // The swap-relevant leg of one side: the SPL transfer when a native-SOL leg rides along
     // (token-account rent), otherwise the single/first leg (a genuinely-SOL swap side).
     private fun primaryTransfer(transfers: List<SolanaTransactionRecord.Transfer>): SolanaTransactionRecord.Transfer? =
         transfers.firstOrNull { (it.value as? TransactionValue.CoinValue)?.token != baseToken }
             ?: transfers.firstOrNull()
+
+    // When a side is exactly one token (non-SOL) leg plus one or more *small* SOL legs (associated-
+    // token-account rent that rides along an SPL transfer), the SOL legs are a network cost, not
+    // separate transfers — reduce the side to just the token leg. A SOL leg that is a genuine
+    // payment is NOT rent, so it is kept: collapsing it would silently hide a real SOL transfer that
+    // shares a transaction with a token transfer. Any other shape is returned unchanged (a lone SOL
+    // transfer, multiple token legs, etc.).
+    //
+    // Whether the SOL is rent is decided STRUCTURALLY from [createdTokenAccount] (SolanaKit reports
+    // whether the transaction created a token account):
+    //   true  -> an account was created, so the SOL is rent -> collapse (still bounded by
+    //            [maxSolRent] so a real payment bundled with a create isn't hidden);
+    //   false -> no account was created, so the SOL leg is a real transfer -> keep it;
+    //   null  -> unknown (a row synced before this was tracked) -> fall back to the amount bound.
+    //
+    // Caveat: `createdTokenAccount` is transaction-level and the SOL side is a single NET balance
+    // change, so we can't attribute exactly how many lamports were rent. [maxSolRent] is therefore
+    // kept to ~one account's rent, which bounds any hidden bundled payment to sub-cent dust; a SOL
+    // side larger than that (a real payment, or several created accounts) is kept as a composite
+    // transfer — showing more, never hiding. Exact per-leg attribution would need SolanaKit support.
+    private fun collapseTokenWithSolRent(
+        transfers: List<SolanaTransactionRecord.Transfer>,
+        createdTokenAccount: Boolean?
+    ): List<SolanaTransactionRecord.Transfer> {
+        if (transfers.size <= 1) return transfers
+
+        val (solLegs, tokenLegs) = transfers.partition { (it.value as? TransactionValue.CoinValue)?.token == baseToken }
+        if (tokenLegs.size != 1 || solLegs.isEmpty()) return transfers
+
+        val solLegsWithinRent = solLegs.all { leg ->
+            val amount = (leg.value as? TransactionValue.CoinValue)?.value?.abs()
+            amount != null && amount <= maxSolRent
+        }
+        if (!solLegsWithinRent) return transfers
+
+        val solIsRent = when (createdTokenAccount) {
+            true -> true
+            false -> false
+            null -> true
+        }
+
+        return if (solIsRent) tokenLegs else transfers
+    }
+
+    // The wallet token for a mint named by a swap instruction. Swap programs express native SOL
+    // as the wrapped-SOL mint, which maps to the native token here: the user holds and sees SOL.
+    private fun tokenForMint(mint: String): Token? =
+        if (mint == wrappedSolMint) baseToken
+        else coinManager.getToken(TokenQuery(BlockchainType.Solana, TokenType.Spl(mint)))
 
     suspend fun transactionRecord(fullTransaction: FullTransaction): SolanaTransactionRecord {
         val transaction = fullTransaction.transaction
@@ -61,15 +115,21 @@ class SolanaTransactionConverter(
             val query = TokenQuery(BlockchainType.Solana, TokenType.Spl(tokenTransfer.mintAddress))
             val token = coinManager.getToken(query)
 
+            // SolanaKit stores transfer amounts unsigned (direction lives in `incoming`), but the
+            // transactions list derives the displayed +/- from the value's sign — negate outgoing
+            // amounts, matching the SOL leg above. NFT values stay unsigned: NFT rendering passes
+            // direction explicitly and shows the count.
+            val amount = if (tokenTransfer.incoming) tokenTransfer.amount else tokenTransfer.amount.negate()
+
             val transactionValue = when {
-                token != null -> TransactionValue.CoinValue(token, tokenTransfer.amount.movePointLeft(token.decimals))
+                token != null -> TransactionValue.CoinValue(token, amount.movePointLeft(token.decimals))
                 mintAccount.isNft -> TransactionValue.NftValue(
                     NftUid.Solana(mintAccount.address),
                     tokenTransfer.amount,
                     mintAccount.name,
                     mintAccount.symbol
                 )
-                else -> TransactionValue.RawValue(value = tokenTransfer.amount.toBigInteger())
+                else -> TransactionValue.RawValue(value = amount.toBigInteger())
             }
 
             if (tokenTransfer.incoming) {
@@ -86,21 +146,37 @@ class SolanaTransactionConverter(
         // confirmation) — all are swaps. A side can carry a spurious SOL leg next to the real SPL one
         // (tx fee / token-account rent), so each side prefers its non-SOL leg via `primaryTransfer`
         // (`valueIn`/`valueOut` are null when that side has no leg).
+        //
+        // The pair's tokens come from the legs when present; otherwise from the mints the swap
+        // instruction itself names (1inch Fusion, whose two transactions each move one side), so a
+        // one-legged Fusion row can still show both tokens.
         val exchangeName = swapExchangeName(transaction)
         if (exchangeName != null) {
+            val valueIn = primaryTransfer(outgoingTransfers)?.value
+            val valueOut = primaryTransfer(incomingTransfers)?.value
             return SolanaSwapTransactionRecord(
                 transaction = transaction.essentials(),
                 baseToken = baseToken,
                 source = source,
                 exchangeName = exchangeName,
-                valueIn = primaryTransfer(outgoingTransfers)?.value,
-                valueOut = primaryTransfer(incomingTransfers)?.value
+                valueIn = valueIn,
+                valueOut = valueOut,
+                tokenIn = (valueIn as? TransactionValue.CoinValue)?.token ?: transaction.swapSrcMint?.let { tokenForMint(it) },
+                tokenOut = (valueOut as? TransactionValue.CoinValue)?.token ?: transaction.swapDstMint?.let { tokenForMint(it) }
             )
         }
 
+        // A plain SPL send/receive also moves a little SOL for associated-token-account rent (paid
+        // when the recipient's token account has to be created), so the transaction carries a SOL
+        // leg alongside the token leg. That is one logical transfer (the token) plus a network cost
+        // — not two transfers — so collapse a "single token leg + accompanying SOL rent/fee" side to
+        // just the token leg. Without this, such sends fall through to "Unknown Transaction".
+        val effectiveIncoming = collapseTokenWithSolRent(incomingTransfers, transaction.createdTokenAccount)
+        val effectiveOutgoing = collapseTokenWithSolRent(outgoingTransfers, transaction.createdTokenAccount)
+
         return when {
-            (incomingTransfers.size == 1 && outgoingTransfers.isEmpty()) -> {
-                val transfer = incomingTransfers.first()
+            (effectiveIncoming.size == 1 && effectiveOutgoing.isEmpty()) -> {
+                val transfer = effectiveIncoming.first()
                 val spam = App.spamManager.isSpam(
                     transaction.hash.toByteArray(),
                     listOf(TransferEvent(transfer.address, transfer.value)),
@@ -111,8 +187,8 @@ class SolanaTransactionConverter(
                 SolanaIncomingTransactionRecord(transaction.essentials(), baseToken, source, transfer.address, transfer.value, spam)
             }
 
-            (incomingTransfers.isEmpty() && outgoingTransfers.size == 1) -> {
-                val transfer = outgoingTransfers.first()
+            (effectiveIncoming.isEmpty() && effectiveOutgoing.size == 1) -> {
+                val transfer = effectiveOutgoing.first()
                 SolanaOutgoingTransactionRecord(transaction.essentials(), baseToken, source, transfer.address, transfer.value, transfer.address == userAddress)
             }
 
@@ -136,10 +212,35 @@ class SolanaTransactionConverter(
     }
 
     companion object {
+        // Upper bound for a SOL leg that may be treated as associated-token-account rent rather than
+        // a real payment. Set to ~one account's rent: the rent-exempt minimum for a classic SPL
+        // associated token account (165 bytes) is ~0.00204 SOL, but a Token-2022 account also
+        // carries extension data — immutable-owner plus the mint-required account extensions
+        // (transfer-fee amount, transfer-hook flag, …) — observed on mainnet at 0.00207–0.00220 SOL
+        // (e.g. 0.00210888 for a Pump.fun ATA). The bound must sit ABOVE that range: at 0.0021 a
+        // Token-2022 send that created the recipient's account kept its rent leg and fell through
+        // to "Unknown Transaction". Kept tight beyond that headroom on purpose — since
+        // `createdTokenAccount` is transaction-level and the SOL side is a single NET amount we
+        // can't split into rent vs. payment, a real payment bundled with a create pushes the net
+        // past this bound and is shown as a composite transfer; only sub-cent dust could ever fold
+        // into the rent. A larger SOL leg (a genuine payment, or several created accounts) is
+        // likewise kept — showing more, never hiding. See collapseTokenWithSolRent; exact per-leg
+        // attribution would need SolanaKit support.
+        private val maxSolRent = BigDecimal("0.0023")
+
+        private const val wrappedSolMint = "So11111111111111111111111111111111111111112"
+
         // Display labels for the swap programs SolanaKit recognizes (`Transaction.programIds`).
         // Mirrors the EVM flow, where the exchange contract address maps to a label ("1inch v5").
-        private val swapProgramLabels = mapOf(
+        // Ordered by priority for `swapExchangeName`: intent/entry-point aggregators that route
+        // through other recognized programs come before the programs they route through.
+        private val swapProgramLabels = linkedMapOf(
+            // Fusion order-create (only this program) and its resolver fill (this + e.g. Jupiter).
+            KnownPrograms.oneInchFusion to "1inch",
             KnownPrograms.jupiterV6 to "Jupiter",
+            // A distinct aggregator (Jupiter routes some legs through it, but it is also used
+            // directly), so label it by its actual program rather than assuming Jupiter.
+            KnownPrograms.dflow to "DFlow",
             KnownPrograms.lifi to "LI.FI",
         )
     }
