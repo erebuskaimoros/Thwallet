@@ -4,8 +4,12 @@
 
 | Session | Focus | Summary | Record |
 |---------|-------|---------|--------|
+| 2026-11-14 #1 | November upstream synchronization | Merged 557 upstream commits on `upstream-sync`, keeping the native THORChain provider and adopting upstream XRP. | [Session 1](2026-11-14/session-1.md) |
 | 2026-08-15 #1 | Six-chain EVM expansion | Added and verified six EVM mainnets across wallet, signing, fee, and provider paths. | [Session 1](2026-08-15/session-1.md) |
 
 ## Current Work In Progress
 
-None.
+- `upstream-sync` awaits the three kit fork branches being pushed (pins resolve
+  only from mavenLocal until then), then lint, a release build, a device smoke
+  test and a merge into `master`.
+- iOS must converge on upstream's `xrp` identifier; `xrp-support` is superseded.
