@@ -69,15 +69,15 @@ THORChain provider; the debug app builds and 537 of 538 unit tests pass.
 
 ## In Progress
 
-- The kit forks' `upstream-sync` branches are local only. Until they are pushed
-  to the `erebuskaimoros` forks, JitPack cannot resolve the new pins and the
-  wallet builds only on a machine with those artifacts in mavenLocal.
+- The kit forks' `upstream-sync` branches were pushed at the end of the session
+  and JitPack built all three pinned commits. A wallet build that resolves them
+  from JitPack rather than mavenLocal has not been run yet.
 - `upstream-sync` is not merged into `master`.
 - iOS has not yet converged on the `xrp` identifier (open parity gap).
 
 ## Next Steps
 
-- [ ] Push the three kit fork branches and confirm a clean JitPack-resolved build
+- [ ] Confirm a clean wallet build that resolves the kits from JitPack, not mavenLocal
 - [ ] Run lint, a release (R8) build and a device smoke test of send, swap and WalletConnect
 - [ ] Decide whether to fix or skip upstream's failing NEAR RPC-order test
 - [ ] Record the `xrp` identifier decision in the iOS repository and port it

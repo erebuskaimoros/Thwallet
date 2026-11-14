@@ -9,7 +9,7 @@
 
 ## Current Work In Progress
 
-- `upstream-sync` awaits the three kit fork branches being pushed (pins resolve
-  only from mavenLocal until then), then lint, a release build, a device smoke
-  test and a merge into `master`.
+- `upstream-sync` and the three kit fork branches are pushed and JitPack has
+  built the pinned kit commits. Remaining before merging into `master`: a
+  clean build without mavenLocal, lint, a release build and a device smoke test.
 - iOS must converge on upstream's `xrp` identifier; `xrp-support` is superseded.
