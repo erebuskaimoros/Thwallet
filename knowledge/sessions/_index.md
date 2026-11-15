@@ -12,4 +12,7 @@
 - `upstream-sync` and the three kit fork branches are pushed and JitPack has
   built the pinned kit commits. Remaining before merging into `master`: a
   clean build without mavenLocal, lint, a release build and a device smoke test.
-- iOS must converge on upstream's `xrp` identifier; `xrp-support` is superseded.
+- iOS converged on upstream's `xrp` identifier on 2026-11-15 (its `upstream-sync`
+  branch passes iOS CI); `xrp-support` is superseded on both platforms. Android
+  still needs comparing against iOS's ZEC-destination guard and WalletConnect
+  EVM parsing rules.

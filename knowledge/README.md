@@ -175,8 +175,13 @@ Decisions recorded by the maintainer on 2026-11-14:
 - **XRP follows upstream.** Upstream's `walletkit-chain-xrp` (persisted UID
   `xrp`, `xrpKit`, issued-token support) is adopted. Thwallet's own
   `xrp-support` branch (`ripple|native`, hand-written codec) is superseded and
-  must not be merged. iOS must use the same `xrp` identifier; until the iOS
-  repository records that, this is an open cross-platform parity gap.
+  must not be merged. iOS adopted the same upstream `xrp` identifier on its
+  own `upstream-sync` branch on 2026-11-15, so the identifier is equal on both
+  platforms.
+- **Open parity items from the iOS synchronization** (see the iOS repository's
+  `docs/UPSTREAM_SYNC.md`): iOS refuses a non-transparent ZEC destination on the
+  native THORChain provider and applies strict WalletConnect EVM request
+  parsing; Android has not been compared rule by rule.
 - **Upstream's `AGENTS.md` is not adopted**; Thwallet's own file is kept.
 
 Upstream's server-published route score is keyed by provider id, so the native
